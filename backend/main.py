@@ -5,10 +5,11 @@ This is the main FastAPI application that serves as the backend for the CUA proj
 It provides API endpoints for the Cloudflare AI Gateway integration and MCP orchestration.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import os
+from app.core import e2b_stub
 import logging
 
 # Configure logging
@@ -65,6 +66,54 @@ async def api_status():
             "vector_search": True
         }
     }
+
+# ---------------------- E2B STUB ENDPOINTS ----------------------
+@app.post("/e2b/session")
+async def e2b_create_session(user_id: str | None = None):
+    """Create a stub E2B desktop session (placeholder)."""
+    sess = e2b_stub.create_session(user_id=user_id)
+    return {"session": sess}
+
+
+@app.get("/e2b/session/{session_id}")
+async def e2b_get_session(session_id: str):
+    try:
+        sess = e2b_stub.get_session(session_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="session_not_found")
+    return {"session": sess}
+
+
+@app.post("/e2b/session/{session_id}/exec")
+async def e2b_exec(session_id: str, command: str):
+    try:
+        result = e2b_stub.exec_command(session_id, command)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="session_not_found")
+    return result
+
+
+@app.post("/e2b/session/{session_id}/write")
+async def e2b_write(session_id: str, path: str, content: str):
+    try:
+        result = e2b_stub.write_file(session_id, path, content)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="session_not_found")
+    return result
+
+
+@app.post("/e2b/session/{session_id}/close")
+async def e2b_close(session_id: str):
+    try:
+        result = e2b_stub.close_session(session_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="session_not_found")
+    return result
+
+
+@app.get("/e2b/sessions")
+async def e2b_list_sessions():
+    return e2b_stub.list_sessions()
 
 if __name__ == "__main__":
     import uvicorn
