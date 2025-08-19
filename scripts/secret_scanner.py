@@ -229,10 +229,13 @@ class SecretScanner:
             content += f"{var}=your_{var.lower()}_here\n\n"
         
         if new_vars:
-            with open(env_example_path, 'w') as f:
-                f.write(content)
-            # Don't log the content or sensitive variable names
-            print(f"📝 Updated {env_example_path} with {len(new_vars)} new environment variables")
+            # Write content to file without logging sensitive information
+            try:
+                with open(env_example_path, 'w') as f:
+                    f.write(content)
+                print(f"📝 Updated {env_example_path} with {len(new_vars)} new environment variables")
+            except Exception as e:
+                print(f"❌ Error updating {env_example_path}: {str(e)}")
     
     def scan_project(self) -> Dict:
         """Scan the entire project for secrets."""
@@ -311,12 +314,13 @@ class SecretScanner:
             print(f"\nSecret types detected:")
             for secret_type in scan_results['secret_types']:
                 config = SECRET_PATTERNS.get(secret_type, {})
-                description = config.get('description', secret_type)
-                # Only log the description, not the actual secret type pattern
+                description = config.get('description', 'Unknown secret type')
+                # Only log the description, never the actual pattern or type
                 print(f"  • {description}")
         
         if fix_results:
             print(f"\n🔧 Fix Results:")
+            # Only log counts, never specific details about what was fixed
             print(f"Files fixed: {fix_results.get('files_fixed', 0)}")
             print(f"Secrets fixed: {fix_results.get('secrets_fixed', 0)}")
             print(f"Environment variables added: {fix_results.get('env_vars_added', 0)}")

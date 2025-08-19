@@ -168,7 +168,7 @@ SECRET_GITHUB_TOKEN=ghp_your-github-token-here
 
 # Optional API Keys
 SECRET_CF_AI_TOKEN=your-cloudflare-token-here
-SECRET_NEO4J_PASSWORD=development_password
+SECRET_NEO4J_PASSWORD=your_neo4j_password_here
 
 # =============================================================================
 # FEATURE FLAGS
