@@ -1,0 +1,18 @@
+{
+  "name": "multi-stack-base",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "features": {},
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "editor.formatOnSave": true
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-dotnettools.csharp",
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  },
+  "postCreateCommand": "echo 'Devcontainer initialized. Trim toolchains after stack choice.'"
+}

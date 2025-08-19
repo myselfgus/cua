@@ -1,0 +1,47 @@
+# General
+.DS_Store
+Thumbs.db
+node_modules/
+.env
+.env.*
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
+coverage/
+dist/
+build/
+.cache/
+.tmp/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Dotnet
+bin/
+obj/
+
+# Docker
+*.tar
+
+# IDE
+.idea/
+*.swp
+
+# Test artifacts
+junit-report.xml
+
+# Optional lockfiles (will exist after scaffold)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+poetry.lock
