@@ -1,0 +1,1 @@
+"""Backend application core module."""

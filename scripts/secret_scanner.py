@@ -231,6 +231,7 @@ class SecretScanner:
         if new_vars:
             with open(env_example_path, 'w') as f:
                 f.write(content)
+            # Don't log the content or sensitive variable names
             print(f"📝 Updated {env_example_path} with {len(new_vars)} new environment variables")
     
     def scan_project(self) -> Dict:
@@ -299,7 +300,7 @@ class SecretScanner:
         }
     
     def generate_report(self, scan_results: Dict, fix_results: Dict = None) -> None:
-        """Generate a comprehensive report."""
+        """Generate a comprehensive report without logging sensitive information."""
         print(f"\n📊 Secret Scanning Report")
         print("=" * 50)
         print(f"Files scanned: {scan_results['total_files_scanned']}")
@@ -311,13 +312,14 @@ class SecretScanner:
             for secret_type in scan_results['secret_types']:
                 config = SECRET_PATTERNS.get(secret_type, {})
                 description = config.get('description', secret_type)
+                # Only log the description, not the actual secret type pattern
                 print(f"  • {description}")
         
         if fix_results:
             print(f"\n🔧 Fix Results:")
-            print(f"Files fixed: {fix_results['files_fixed']}")
-            print(f"Secrets fixed: {fix_results['secrets_fixed']}")
-            print(f"Environment variables added: {fix_results['env_vars_added']}")
+            print(f"Files fixed: {fix_results.get('files_fixed', 0)}")
+            print(f"Secrets fixed: {fix_results.get('secrets_fixed', 0)}")
+            print(f"Environment variables added: {fix_results.get('env_vars_added', 0)}")
         
         if scan_results['total_secrets_found'] > 0:
             print(f"\n⚠️  Security Recommendations:")

@@ -69,7 +69,7 @@ graph TB
     end
 
     subgraph "🚪 Gateway Layer"
-        AG[🤖 AI Gateway<br/>Cloudflare/LiteLLM]
+        AG[🤖 AI Gateway<br/>Cloudflare AI Gateway]
         MG[🔌 MCP Gateway<br/>Docker orchestration]
         API[🌐 API Gateway<br/>GCP Load Balancer]
     end

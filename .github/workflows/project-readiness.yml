@@ -417,7 +417,7 @@ jobs:
           python project_readiness.py
 
       - name: 📊 Upload readiness report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: project-readiness-report
           path: project-readiness-report.json

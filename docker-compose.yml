@@ -46,12 +46,12 @@ services:
     environment:
       - ENVIRONMENT=development
       - DEBUG=true
-      - DATABASE_URL=postgresql://cua_user:cua_password@postgres:5432/cua_dev
-      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://cua_user:${POSTGRES_PASSWORD:-cua_password}@postgres:5432/cua_dev
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-development_password}@redis:6379
       - APP_QDRANT_URL=http://qdrant:6333
       - APP_NEO4J_URL=bolt://neo4j:7687
       - SECRET_OPENAI_API_KEY=${SECRET_OPENAI_API_KEY}
-      - SECRET_NEO4J_PASSWORD=development_password
+      - SECRET_NEO4J_PASSWORD=${NEO4J_PASSWORD:-development_password}
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,7 +86,7 @@ services:
     environment:
       - POSTGRES_DB=cua_dev
       - POSTGRES_USER=cua_user
-      - POSTGRES_PASSWORD=cua_password
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-cua_password}
     ports:
       - "5432:5432"
     volumes:
@@ -105,7 +105,7 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --requirepass development_password
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-development_password}
     healthcheck:
       test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
       interval: 10s
@@ -140,13 +140,13 @@ services:
       - neo4j_data:/data
       - neo4j_logs:/logs
     environment:
-      - NEO4J_AUTH=neo4j/development_password
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-development_password}
       - NEO4J_PLUGINS=["apoc"]
       - NEO4J_dbms_security_procedures_unrestricted=apoc.*
       - NEO4J_dbms_memory_heap_initial__size=512m
       - NEO4J_dbms_memory_heap_max__size=2G
     healthcheck:
-      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "development_password", "RETURN 1"]
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASSWORD:-development_password}", "RETURN 1"]
       interval: 10s
       timeout: 10s
       retries: 5
@@ -176,7 +176,7 @@ services:
       - ./infra/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
       - ./infra/monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=development_password
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-development_password}
       - GF_USERS_ALLOW_SIGN_UP=false
 
   # Development Tools
@@ -191,7 +191,7 @@ services:
     image: dpage/pgadmin4:latest
     environment:
       - PGADMIN_DEFAULT_EMAIL=admin@cua.dev
-      - PGADMIN_DEFAULT_PASSWORD=development_password
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:-development_password}
     ports:
       - "5050:80"
     volumes:
