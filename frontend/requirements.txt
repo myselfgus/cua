@@ -1,0 +1,60 @@
+# Frontend Dependencies (LobeChat Modified)
+
+## Core Framework
+react@^18.3.0
+next@^14.2.0
+typescript@^5.4.0
+@types/react@^18.3.0
+@types/node@^20.14.0
+
+## State Management & Data Fetching
+zustand@^4.5.0                    # Global state management
+@tanstack/react-query@^5.0.0      # Server state management
+swr@^2.2.0                        # Alternative data fetching
+
+## UI Components & Styling
+tailwindcss@^3.4.0               # Utility-first CSS
+@headlessui/react@^1.7.0         # Unstyled UI components
+lucide-react@^0.376.0            # Icon library
+framer-motion@^11.2.0            # Animation library
+react-hot-toast@^2.4.0           # Toast notifications
+@radix-ui/react-dialog@^1.0.0    # Modal dialogs
+@radix-ui/react-tabs@^1.0.0      # Tab component
+
+## Code & Terminal Components
+monaco-editor@^0.47.0            # Code editor
+@monaco-editor/react@^4.6.0      # React wrapper for Monaco
+xterm@^5.3.0                     # Terminal emulation
+xterm-addon-fit@^0.8.0           # Terminal fitting addon
+xterm-addon-web-links@^0.9.0     # Clickable links in terminal
+
+## Audio & Media
+web-speech-api@^0.2.0            # Browser STT/TTS (polyfill)
+wavesurfer.js@^7.7.0             # Audio visualization
+react-player@^2.16.0             # Video/audio player
+react-webcam@^7.1.0              # Camera access
+
+## Real-time Communication
+socket.io-client@^4.7.0          # WebSocket client
+eventsource@^2.0.0               # Server-sent events
+
+## File Handling
+react-dropzone@^14.2.0           # Drag & drop file uploads
+file-saver@^2.0.0                # File download utility
+
+## Utilities
+date-fns@^3.6.0                  # Date manipulation
+lodash@^4.17.0                   # Utility functions
+clsx@^2.1.0                      # Conditional class names
+nanoid@^5.0.0                    # ID generation
+
+## Development Dependencies
+@vitejs/plugin-react@^4.3.0      # Vite React plugin (if using Vite)
+@testing-library/react@^15.0.0   # React testing utilities
+@testing-library/jest-dom@^6.4.0 # Jest DOM matchers
+vitest@^1.6.0                    # Testing framework
+jsdom@^24.0.0                    # DOM implementation for testing
+@playwright/test@^1.44.0         # E2E testing
+eslint@^8.57.0                   # Linting
+prettier@^3.2.0                  # Code formatting
+@typescript-eslint/eslint-plugin@^7.0.0  # TypeScript ESLint rules

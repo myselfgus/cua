@@ -1,0 +1,383 @@
+name: 🚀 Deploy to Production
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: us-central1
+
+jobs:
+  deploy-staging:
+    name: 🧪 Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment:
+      name: staging
+      url: https://staging.cua.yourdomain.com
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: ☁️ Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          service_account_key: ${{ secrets.GCP_SA_KEY_STAGING }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          export_default_credentials: true
+      
+      - name: 🐳 Configure Docker authentication
+        run: gcloud auth configure-docker --quiet
+      
+      - name: 🏗️ Build and push images
+        run: |
+          # Build frontend
+          docker build -t gcr.io/${{ env.GCP_PROJECT_ID }}/cua-frontend:staging-${{ github.sha }} \
+            --build-arg NODE_ENV=staging \
+            --build-arg API_URL=${{ secrets.STAGING_API_URL }} \
+            frontend/
+          
+          # Build backend
+          docker build -t gcr.io/${{ env.GCP_PROJECT_ID }}/cua-backend:staging-${{ github.sha }} \
+            --build-arg ENVIRONMENT=staging \
+            backend/
+          
+          # Push images
+          docker push gcr.io/${{ env.GCP_PROJECT_ID }}/cua-frontend:staging-${{ github.sha }}
+          docker push gcr.io/${{ env.GCP_PROJECT_ID }}/cua-backend:staging-${{ github.sha }}
+      
+      - name: 🚀 Deploy to Cloud Run
+        run: |
+          # Deploy frontend
+          gcloud run deploy cua-frontend-staging \
+            --image gcr.io/${{ env.GCP_PROJECT_ID }}/cua-frontend:staging-${{ github.sha }} \
+            --platform managed \
+            --region ${{ env.GCP_REGION }} \
+            --allow-unauthenticated \
+            --memory 1Gi \
+            --cpu 1 \
+            --max-instances 10 \
+            --set-env-vars NODE_ENV=staging
+          
+          # Deploy backend
+          gcloud run deploy cua-backend-staging \
+            --image gcr.io/${{ env.GCP_PROJECT_ID }}/cua-backend:staging-${{ github.sha }} \
+            --platform managed \
+            --region ${{ env.GCP_REGION }} \
+            --memory 2Gi \
+            --cpu 2 \
+            --max-instances 20 \
+            --set-env-vars ENVIRONMENT=staging \
+            --set-secrets SECRET_OPENAI_API_KEY=openai-api-key:latest,SECRET_DB_PASSWORD=db-password:latest
+      
+      - name: 🌐 Update DNS (Cloudflare)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: |
+            # Update DNS record to point to new Cloud Run service
+            FRONTEND_URL=$(gcloud run services describe cua-frontend-staging --region=${{ env.GCP_REGION }} --format='value(status.url)')
+            curl -X PUT "https://api.cloudflare.com/client/v4/zones/${{ secrets.CLOUDFLARE_ZONE_ID }}/dns_records/${{ secrets.CLOUDFLARE_STAGING_RECORD_ID }}" \
+              -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              --data "{\"type\":\"CNAME\",\"name\":\"staging\",\"content\":\"${FRONTEND_URL#https://}\"}"
+      
+      - name: 🧪 Run smoke tests
+        run: |
+          sleep 30  # Wait for deployment to be ready
+          curl -f https://staging.cua.yourdomain.com/health || exit 1
+          curl -f https://staging-api.cua.yourdomain.com/health || exit 1
+      
+      - name: 📊 Update deployment status
+        if: always()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { context } = require('@actions/github');
+            const deploymentId = context.payload.deployment?.id;
+            if (deploymentId) {
+              await github.rest.repos.createDeploymentStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                deployment_id: deploymentId,
+                state: '${{ job.status }}',
+                environment_url: 'https://staging.cua.yourdomain.com'
+              });
+            }
+
+  deploy-production:
+    name: 🌟 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment:
+      name: production
+      url: https://cua.yourdomain.com
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: ☁️ Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          service_account_key: ${{ secrets.GCP_SA_KEY_PRODUCTION }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          export_default_credentials: true
+      
+      - name: 🐳 Configure Docker authentication
+        run: gcloud auth configure-docker --quiet
+      
+      - name: 🏷️ Extract version
+        id: version
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION=main-${GITHUB_SHA::8}
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      
+      - name: 🏗️ Build and push production images
+        run: |
+          # Build frontend
+          docker build -t gcr.io/${{ env.GCP_PROJECT_ID }}/cua-frontend:${{ steps.version.outputs.version }} \
+            --build-arg NODE_ENV=production \
+            --build-arg API_URL=${{ secrets.PRODUCTION_API_URL }} \
+            frontend/
+          
+          # Build backend
+          docker build -t gcr.io/${{ env.GCP_PROJECT_ID }}/cua-backend:${{ steps.version.outputs.version }} \
+            --build-arg ENVIRONMENT=production \
+            backend/
+          
+          # Push images
+          docker push gcr.io/${{ env.GCP_PROJECT_ID }}/cua-frontend:${{ steps.version.outputs.version }}
+          docker push gcr.io/${{ env.GCP_PROJECT_ID }}/cua-backend:${{ steps.version.outputs.version }}
+          
+          # Tag as latest
+          docker tag gcr.io/${{ env.GCP_PROJECT_ID }}/cua-frontend:${{ steps.version.outputs.version }} gcr.io/${{ env.GCP_PROJECT_ID }}/cua-frontend:latest
+          docker tag gcr.io/${{ env.GCP_PROJECT_ID }}/cua-backend:${{ steps.version.outputs.version }} gcr.io/${{ env.GCP_PROJECT_ID }}/cua-backend:latest
+          docker push gcr.io/${{ env.GCP_PROJECT_ID }}/cua-frontend:latest
+          docker push gcr.io/${{ env.GCP_PROJECT_ID }}/cua-backend:latest
+      
+      - name: 🔄 Blue-Green Deployment
+        run: |
+          # Get current production service
+          CURRENT_SERVICE=$(gcloud run services list --region=${{ env.GCP_REGION }} --filter="metadata.name~'^cua-frontend'" --format="value(metadata.name)" | grep -v staging)
+          
+          if [[ $CURRENT_SERVICE == *"blue" ]]; then
+            NEW_SERVICE="cua-frontend-green"
+          else
+            NEW_SERVICE="cua-frontend-blue"
+          fi
+          
+          echo "Deploying to: $NEW_SERVICE"
+          
+          # Deploy new version
+          gcloud run deploy $NEW_SERVICE \
+            --image gcr.io/${{ env.GCP_PROJECT_ID }}/cua-frontend:${{ steps.version.outputs.version }} \
+            --platform managed \
+            --region ${{ env.GCP_REGION }} \
+            --allow-unauthenticated \
+            --memory 2Gi \
+            --cpu 2 \
+            --max-instances 50 \
+            --set-env-vars NODE_ENV=production
+          
+          # Deploy backend
+          if [[ $CURRENT_SERVICE == *"blue" ]]; then
+            BACKEND_SERVICE="cua-backend-green"
+          else
+            BACKEND_SERVICE="cua-backend-blue"
+          fi
+          
+          gcloud run deploy $BACKEND_SERVICE \
+            --image gcr.io/${{ env.GCP_PROJECT_ID }}/cua-backend:${{ steps.version.outputs.version }} \
+            --platform managed \
+            --region ${{ env.GCP_REGION }} \
+            --memory 4Gi \
+            --cpu 4 \
+            --max-instances 100 \
+            --set-env-vars ENVIRONMENT=production \
+            --set-secrets SECRET_OPENAI_API_KEY=openai-api-key:latest,SECRET_DB_PASSWORD=db-password:latest
+          
+          echo "NEW_FRONTEND_SERVICE=$NEW_SERVICE" >> $GITHUB_ENV
+          echo "NEW_BACKEND_SERVICE=$BACKEND_SERVICE" >> $GITHUB_ENV
+      
+      - name: 🧪 Run production health checks
+        run: |
+          # Get new service URLs
+          FRONTEND_URL=$(gcloud run services describe ${{ env.NEW_FRONTEND_SERVICE }} --region=${{ env.GCP_REGION }} --format='value(status.url)')
+          BACKEND_URL=$(gcloud run services describe ${{ env.NEW_BACKEND_SERVICE }} --region=${{ env.GCP_REGION }} --format='value(status.url)')
+          
+          # Health checks
+          echo "Testing frontend: $FRONTEND_URL"
+          curl -f "$FRONTEND_URL" || exit 1
+          
+          echo "Testing backend: $BACKEND_URL/health"
+          curl -f "$BACKEND_URL/health" || exit 1
+          
+          # Load test
+          echo "Running load test..."
+          docker run --rm \
+            -e TARGET_URL="$BACKEND_URL" \
+            -e DURATION=30s \
+            -e VUS=10 \
+            loadimpact/k6 run - <<EOF
+          import http from 'k6/http';
+          import { check } from 'k6';
+          
+          export let options = {
+            vus: __ENV.VUS,
+            duration: __ENV.DURATION,
+          };
+          
+          export default function() {
+            let response = http.get(__ENV.TARGET_URL + '/health');
+            check(response, {
+              'status is 200': (r) => r.status === 200,
+              'response time < 500ms': (r) => r.timings.duration < 500,
+            });
+          }
+          EOF
+      
+      - name: 🔄 Switch traffic to new version
+        run: |
+          # Update DNS to point to new service
+          FRONTEND_URL=$(gcloud run services describe ${{ env.NEW_FRONTEND_SERVICE }} --region=${{ env.GCP_REGION }} --format='value(status.url)')
+          
+          curl -X PUT "https://api.cloudflare.com/client/v4/zones/${{ secrets.CLOUDFLARE_ZONE_ID }}/dns_records/${{ secrets.CLOUDFLARE_PRODUCTION_RECORD_ID }}" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data "{\"type\":\"CNAME\",\"name\":\"cua\",\"content\":\"${FRONTEND_URL#https://}\"}"
+          
+          # Wait for DNS propagation
+          sleep 60
+      
+      - name: ✅ Verify production deployment
+        run: |
+          # Final verification
+          for i in {1..5}; do
+            if curl -f https://cua.yourdomain.com/health; then
+              echo "Production verification successful"
+              break
+            fi
+            sleep 10
+          done
+      
+      - name: 🧹 Cleanup old version
+        run: |
+          # Keep the old version for quick rollback, but reduce its capacity
+          if [[ ${{ env.NEW_FRONTEND_SERVICE }} == *"blue" ]]; then
+            OLD_SERVICE="cua-frontend-green"
+          else
+            OLD_SERVICE="cua-frontend-blue"
+          fi
+          
+          # Scale down old service
+          gcloud run services update $OLD_SERVICE \
+            --region ${{ env.GCP_REGION }} \
+            --max-instances 1 || true
+      
+      - name: 🎉 Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          release_name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## 🚀 Release ${{ steps.version.outputs.version }}
+            
+            This release has been automatically deployed to production.
+            
+            ### 🌐 URLs
+            - **Production**: https://cua.yourdomain.com
+            - **API**: https://api.cua.yourdomain.com
+            
+            ### 📊 Deployment Info
+            - **Frontend Image**: gcr.io/${{ env.GCP_PROJECT_ID }}/cua-frontend:${{ steps.version.outputs.version }}
+            - **Backend Image**: gcr.io/${{ env.GCP_PROJECT_ID }}/cua-backend:${{ steps.version.outputs.version }}
+            - **Deployed At**: $(date -u)
+          draft: false
+          prerelease: false
+
+  rollback:
+    name: 🔄 Rollback Production
+    runs-on: ubuntu-latest
+    if: failure() && needs.deploy-production.result == 'failure'
+    needs: deploy-production
+    environment:
+      name: production
+    
+    steps:
+      - name: ☁️ Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          service_account_key: ${{ secrets.GCP_SA_KEY_PRODUCTION }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+      
+      - name: 🔄 Rollback to previous version
+        run: |
+          # Find the current and previous services
+          CURRENT_SERVICE=$(gcloud run services list --region=${{ env.GCP_REGION }} --filter="metadata.name~'^cua-frontend-(blue|green)$'" --sort-by="metadata.creationTimestamp" --format="value(metadata.name)" | tail -1)
+          
+          if [[ $CURRENT_SERVICE == *"blue" ]]; then
+            ROLLBACK_SERVICE="cua-frontend-green"
+          else
+            ROLLBACK_SERVICE="cua-frontend-blue"
+          fi
+          
+          echo "Rolling back from $CURRENT_SERVICE to $ROLLBACK_SERVICE"
+          
+          # Update DNS to point to previous service
+          ROLLBACK_URL=$(gcloud run services describe $ROLLBACK_SERVICE --region=${{ env.GCP_REGION }} --format='value(status.url)')
+          
+          curl -X PUT "https://api.cloudflare.com/client/v4/zones/${{ secrets.CLOUDFLARE_ZONE_ID }}/dns_records/${{ secrets.CLOUDFLARE_PRODUCTION_RECORD_ID }}" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data "{\"type\":\"CNAME\",\"name\":\"cua\",\"content\":\"${ROLLBACK_URL#https://}\"}"
+      
+      - name: 📢 Notify rollback
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          text: '🔄 Production deployment failed and has been rolled back!'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  notify-success:
+    name: 🎉 Notify Deployment Success
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always() && !contains(needs.*.result, 'failure')
+    
+    steps:
+      - name: 🎉 Success notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          text: |
+            🚀 Deployment completed successfully!
+            
+            📅 **Environment**: ${{ github.event.inputs.environment || 'production' }}
+            🏷️ **Version**: ${{ github.ref_name }}
+            🌐 **URL**: https://cua.yourdomain.com
+            📊 **Commit**: ${{ github.sha }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
