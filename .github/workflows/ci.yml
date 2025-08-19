@@ -163,7 +163,7 @@ jobs:
       postgres:
         image: postgres:15-alpine
         env:
-          POSTGRES_PASSWORD: test_password
+          POSTGRES_PASSWORD: ci_db_pass
           POSTGRES_USER: test_user
           POSTGRES_DB: test_cua
         ports:
@@ -227,7 +227,7 @@ jobs:
           cd backend
           pytest --cov=app --cov-report=xml --cov-report=html
         env:
-          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_cua
+          DATABASE_URL: postgresql://test_user:ci_db_pass@localhost:5432/test_cua
           REDIS_URL: redis://localhost:6379
           QDRANT_URL: http://localhost:6333
           SECRET_KEY: test_secret_key_for_ci
