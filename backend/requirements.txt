@@ -1,0 +1,64 @@
+# Backend Dependencies (FastAgent Core)
+
+# Core Framework
+fastapi==0.115.6              # Web framework
+uvicorn[standard]==0.32.1     # ASGI server
+pydantic==2.10.3              # Data validation
+python-multipart==0.0.18      # File upload support
+
+# AI & ML Integration
+openai==1.57.4                # OpenAI API client
+anthropic==0.44.0             # Claude API client
+httpx==0.28.1                 # HTTP client for Cloudflare AI Gateway
+sentence-transformers==3.3.1  # Local embeddings
+tiktoken==0.8.0               # Token counting
+transformers==4.53.0          # Hugging Face transformers
+
+# MCP (Model Context Protocol)
+mcp-sdk==1.0.0               # MCP protocol implementation
+httpx==0.28.1                # Async HTTP client
+websockets==13.1             # WebSocket support
+aiofiles==24.1.0             # Async file operations
+
+# Database Drivers
+asyncpg==0.29.0              # PostgreSQL async driver
+redis==5.0.4                 # Redis client
+qdrant-client==1.9.0         # Vector database client
+neo4j==5.20.0                # Graph database driver
+
+# Optional SQL Support
+sqlalchemy==2.0.30           # ORM (if needed)
+alembic==1.13.0              # Database migrations
+
+# Authentication & Security
+python-jose[cryptography]==3.4.0  # JWT tokens
+passlib[bcrypt]==1.7.4       # Password hashing
+cryptography==44.0.1         # Encryption utilities
+
+# Background Tasks & Queuing
+celery==5.3.6                # Distributed task queue
+redis==5.0.4                 # Message broker for Celery
+
+# Monitoring & Logging
+structlog==24.1.0            # Structured logging
+prometheus-client==0.20.0    # Metrics collection
+opentelemetry-api==1.24.0    # Tracing
+opentelemetry-sdk==1.24.0    # Tracing SDK
+opentelemetry-instrumentation-fastapi==0.45b0  # FastAPI instrumentation
+
+# Development Dependencies
+pytest==8.3.4               # Testing framework
+pytest-asyncio==0.24.0      # Async test support
+pytest-cov==6.0.0           # Coverage reporting
+httpx==0.28.1                # Test client
+factory-boy==3.3.1          # Test data factories
+
+# Code Quality
+ruff==0.8.7                  # Fast Python linter
+black==24.10.0               # Code formatter
+mypy==1.13.0                 # Static type checker
+pre-commit==4.0.1            # Git hooks
+
+# Security
+safety==3.3.0                # Dependency vulnerability scanner
+bandit==1.8.0                # Security linter

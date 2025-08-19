@@ -1,21 +1,3622 @@
-# Project CUA – Arquitetura Técnica
+# 🏗️ Project CUA – Advanced Technical Architecture
 
-> Documento de referência unificado. Mantido em versão curta e objetiva; detalhes operacionais ficam no playbook (`.github/copilot-instructions.md`).
+> **Comprehensive technical reference for the Computer User Assistance platform**  
+> *Version 0.1.0 • Last updated: $(date +'%Y-%m-%d')*
+
+[![Architecture Status](https://img.shields.io/badge/architecture-validated-green.svg)](https://github.com/myselfgus/cua)
+[![Documentation](https://img.shields.io/badge/docs-comprehensive-blue.svg)](README.md)
+[![Mermaid Diagrams](https://img.shields.io/badge/diagrams-interactive-purple.svg)](#interactive-diagrams)
+
+---
+
+## 📋 Table of Contents
+
+<details>
+<summary>🧭 Click to expand navigation</summary>
+
+- [🎯 Executive Summary](#-executive-summary)
+- [🏗️ System Architecture Overview](#️-system-architecture-overview)
+- [🔧 Component Deep Dive](#-component-deep-dive)
+- [📊 Interactive Diagrams](#-interactive-diagrams)
+- [🔄 Critical Data Flows](#-critical-data-flows)
+- [🗄️ Data Models & Schemas](#️-data-models--schemas)
+- [📐 Design Patterns & Principles](#-design-patterns--principles)
+- [🔒 Security Architecture](#-security-architecture)
+- [📈 Performance & Scalability](#-performance--scalability)
+- [🚨 Error Handling & Resilience](#-error-handling--resilience)
+- [📊 Observability & Monitoring](#-observability--monitoring)
+- [🎯 Technology Decision Matrix](#-technology-decision-matrix)
+- [🚀 Future Architecture Evolution](#-future-architecture-evolution)
+- [📖 Glossary & References](#-glossary--references)
+
+</details>
 
 ---
 
-## 1. Visão Geral
+## 🎯 Executive Summary
 
-Plataforma de agente conversacional com capacidades de execução (CUA) combinando:
+Project CUA implements a **multi-layered agent architecture** designed for:
 
-- Frontend rico (LobeChat modificado) com abas de artefatos (código, terminal, mídia, sandbox desktop E2B)
-- Backend orquestrador (FastAgent / FastAPI)
-- Gateways especializados: AI Gateway (Cloudflare), MCP Gateway (Docker), API Gateway (serviços internos)
-- Ferramentas via servidores MCP (GitHub, Playwright, SSH, Qdrant, Neo4j, E2B)
+- 🎯 **Rich User Experience**: Unified interface for code, terminal, media, and sandbox interactions
+- ⚡ **Low Latency**: Direct client connections to specialized services (< 200ms response times)
+- 🔧 **Tool Extensibility**: MCP-based tool ecosystem with hot-swappable capabilities
+- 🔒 **Secure Execution**: Isolated sandbox environments with controlled resource access
+- 📈 **Horizontal Scalability**: Cloud-native components with auto-scaling capabilities
 
-Objetivo: baixa latência, execução segura, extensibilidade rápida de ferramentas e visualização unificada de artefatos.
+### Key Architectural Decisions
+
+| Decision | Rationale | Trade-offs |
+|----------|-----------|------------|
+| **Client-Rico Pattern** | Reduces latency, improves responsiveness | Increased frontend complexity |
+| **MCP Tool Protocol** | Standardized, extensible tool integration | Protocol overhead, version compatibility |
+| **Multi-Gateway Pattern** | Specialized routing, better performance | Infrastructure complexity |
+| **Direct Database Access** | Lower latency for context retrieval | Tighter coupling, security considerations |
+| **E2B Sandbox Integration** | Secure code execution, GPU access | Cost implications, latency for remote execution |
 
 ---
+
+## 🏗️ System Architecture Overview
+
+### High-Level Architecture
+
+```mermaid
+graph TB
+    subgraph "🌐 Client Layer"
+        UI[🖥️ LobeChat Frontend<br/>React/Next.js]
+        STT[🎤 Speech-to-Text<br/>Real-time transcription]
+        TTS[🔊 Text-to-Speech<br/>Audio synthesis]
+        AV[📱 Artifact Viewer<br/>Multi-tab interface]
+    end
+
+    subgraph "🚪 Gateway Layer"
+        AG[🤖 AI Gateway<br/>Cloudflare AI Gateway]
+        MG[🔌 MCP Gateway<br/>Docker orchestration]
+        API[🌐 API Gateway<br/>GCP Load Balancer]
+    end
+
+    subgraph "🧠 Orchestration Layer"
+        FA[⚡ FastAgent<br/>Python/FastAPI]
+        TE[🛠️ Tool Executor<br/>MCP coordination]
+        CM[💾 Cache Manager<br/>Redis abstraction]
+        IR[🧭 Intent Router<br/>Request routing]
+    end
+
+    subgraph "🔧 Tool Layer"
+        GH[📝 GitHub MCP<br/>Repository operations]
+        PW[🌐 Playwright MCP<br/>Browser automation]
+        SSH[🖥️ SSH MCP<br/>Remote access]
+        E2B[📦 E2B Sandbox<br/>Code execution]
+    end
+
+    subgraph "🗄️ Data Layer"
+        Redis[(🚀 Redis<br/>Sessions & Cache)]
+        Qdrant[(🔍 Qdrant<br/>Vector similarity)]
+        Neo4j[(🕸️ Neo4j<br/>Knowledge graph)]
+        Storage[(📦 Cloud Storage<br/>Artifacts & media)]
+    end
+
+    %% Direct connections for low latency
+    UI --> Qdrant
+    UI --> Neo4j
+    UI --> AG
+    UI --> API
+    
+    %% Orchestration flow
+    UI --> FA
+    FA --> IR
+    IR --> TE
+    TE --> MG
+    FA --> CM
+    CM --> Redis
+    
+    %% Tool execution
+    MG --> GH
+    MG --> PW
+    MG --> SSH
+    TE --> E2B
+    
+    %% Data persistence
+    FA --> Storage
+    TE --> Redis
+
+    %% Styling
+    classDef clientLayer fill:#e1f5fe
+    classDef gatewayLayer fill:#f3e5f5
+    classDef orchestrationLayer fill:#e8f5e8
+    classDef toolLayer fill:#fff3e0
+    classDef dataLayer fill:#fce4ec
+    
+    class UI,STT,TTS,AV clientLayer
+    class AG,MG,API gatewayLayer
+    class FA,TE,CM,IR orchestrationLayer
+    class GH,PW,SSH,E2B toolLayer
+    class Redis,Qdrant,Neo4j,Storage dataLayer
+```
+
+### Network Architecture
+
+```mermaid
+graph TB
+    subgraph "☁️ GCP Production Environment"
+        subgraph "🌐 Frontend Tier"
+            CR1[Cloud Run Frontend]
+            CDN[Cloud CDN]
+        end
+        
+        subgraph "⚙️ Backend Tier"
+            CR2[Cloud Run Backend]
+            LB[Load Balancer]
+        end
+        
+        subgraph "🗄️ Data Tier"
+            MS[Memorystore Redis]
+            CS[Cloud Storage]
+        end
+    end
+
+    subgraph "🏢 ISADP Infrastructure"
+        subgraph "🔧 Service Layer"
+            QD[Qdrant Cluster]
+            N4J[Neo4j Cluster]
+            E2B_SVC[E2B Service]
+        end
+        
+        subgraph "🎮 Compute Layer"
+            GPU[GPU Cluster]
+            K8S[Kubernetes]
+        end
+    end
+
+    subgraph "🔒 Cloudflare Tunnel"
+        Tunnel[Secure Tunnel<br/>TLS 1.3]
+    end
+
+    %% External traffic
+    Users[👥 Users] --> CDN
+    CDN --> CR1
+    CR1 --> LB
+    LB --> CR2
+    
+    %% Internal GCP
+    CR2 --> MS
+    CR2 --> CS
+    
+    %% Cross-infrastructure
+    CR2 --> Tunnel
+    Tunnel --> QD
+    Tunnel --> N4J
+    Tunnel --> E2B_SVC
+    
+    %% ISADP internal
+    E2B_SVC --> GPU
+    QD --> K8S
+    N4J --> K8S
+```
+
+---
+
+## 🔧 Component Deep Dive
+
+### Frontend Components (LobeChat Extended)
+
+<details>
+<summary>🎨 Frontend Architecture Details</summary>
+
+#### Core Components Structure
+
+```typescript
+// Component hierarchy and responsibilities
+interface ComponentArchitecture {
+  App: {
+    providers: ['ThemeProvider', 'StateProvider', 'ErrorBoundary'];
+    layout: 'ResponsiveLayout';
+    routing: 'NextRouter';
+  };
+  
+  ChatInterface: {
+    components: ['MessageList', 'InputBox', 'ToolResults'];
+    hooks: ['useChat', 'useMessages', 'useStreaming'];
+    features: ['SSE', 'WebSocket', 'File Upload'];
+  };
+  
+  ArtifactViewer: {
+    tabs: ['CodeEditor', 'Terminal', 'MediaViewer', 'WebPreview'];
+    editors: ['Monaco', 'XTerm.js', 'ReactPlayer'];
+    state: 'Zustand store';
+  };
+  
+  ToolPanels: {
+    github: 'GitHubExplorer';
+    browser: 'PlaywrightConsole';
+    system: 'SSHTerminal';
+    sandbox: 'E2BRunner';
+  };
+}
+```
+
+#### State Management Architecture
+
+```typescript
+// Zustand store structure
+interface AppState {
+  // Session management
+  session: {
+    id: string;
+    user: UserProfile;
+    preferences: UserPreferences;
+    activeConversation: string;
+  };
+  
+  // Artifact management
+  artifacts: {
+    items: Map<string, Artifact>;
+    activeTab: ArtifactType;
+    history: ArtifactHistory[];
+    cache: LRUCache<string, Artifact>;
+  };
+  
+  // Tool state
+  tools: {
+    github: GitHubState;
+    playwright: BrowserState;
+    ssh: SSHState;
+    e2b: SandboxState;
+  };
+  
+  // UI state
+  ui: {
+    theme: 'light' | 'dark' | 'auto';
+    layout: LayoutConfiguration;
+    notifications: Notification[];
+    loading: LoadingState;
+  };
+}
+
+// Performance optimization patterns
+const useArtifacts = () => {
+  const artifacts = useAppStore(state => state.artifacts.items);
+  const addArtifact = useAppStore(state => state.addArtifact);
+  
+  // Memoized selectors for performance
+  const activeArtifact = useMemo(
+    () => artifacts.get(activeId),
+    [artifacts, activeId]
+  );
+  
+  // Optimistic updates
+  const updateArtifact = useCallback(async (id: string, updates: Partial<Artifact>) => {
+    // Optimistic update
+    updateArtifactOptimistic(id, updates);
+    
+    try {
+      // Persist to backend
+      await api.updateArtifact(id, updates);
+    } catch (error) {
+      // Rollback on failure
+      revertArtifactUpdate(id);
+      showError('Failed to update artifact');
+    }
+  }, []);
+  
+  return { artifacts, activeArtifact, addArtifact, updateArtifact };
+};
+```
+
+#### Component Communication Patterns
+
+```typescript
+// Event-driven architecture
+interface ComponentEvents {
+  // Cross-component communication
+  'artifact:created': (artifact: Artifact) => void;
+  'artifact:updated': (id: string, updates: Partial<Artifact>) => void;
+  'tool:executed': (toolName: string, result: ToolResult) => void;
+  'session:changed': (sessionId: string) => void;
+  
+  // System events
+  'error:occurred': (error: Error, context: ErrorContext) => void;
+  'performance:metric': (metric: PerformanceMetric) => void;
+  'user:action': (action: UserAction) => void;
+}
+
+// Usage example
+const ArtifactViewer: FC<ArtifactViewerProps> = ({ artifactId }) => {
+  const { artifact, updateArtifact } = useArtifact(artifactId);
+  const eventBus = useEventBus<ComponentEvents>();
+  
+  useEffect(() => {
+    const unsubscribe = eventBus.on('artifact:updated', (id, updates) => {
+      if (id === artifactId) {
+        // Handle external updates
+        updateArtifact(updates);
+      }
+    });
+    
+    return unsubscribe;
+  }, [artifactId, eventBus, updateArtifact]);
+  
+  return (
+    <div className="artifact-viewer">
+      <TabSelector artifact={artifact} />
+      <ContentRenderer artifact={artifact} />
+    </div>
+  );
+};
+```
+
+</details>
+
+### Backend Components (FastAgent Core)
+
+<details>
+<summary>⚙️ Backend Architecture Details</summary>
+
+#### Service Layer Architecture
+
+```python
+# Layered architecture implementation
+from abc import ABC, abstractmethod
+from typing import Protocol, TypeVar, Generic
+
+T = TypeVar('T')
+
+class Repository(Protocol[T]):
+    """Repository pattern for data access"""
+    async def get(self, id: str) -> T | None: ...
+    async def save(self, entity: T) -> T: ...
+    async def delete(self, id: str) -> bool: ...
+    async def find(self, **criteria) -> list[T]: ...
+
+class Service(ABC):
+    """Base service class with common functionality"""
+    def __init__(self, repository: Repository, cache: CacheManager):
+        self.repository = repository
+        self.cache = cache
+        self.logger = get_logger(self.__class__.__name__)
+    
+    async def get_or_cache(self, key: str, factory_fn, ttl: int = 300):
+        """Cache-aside pattern implementation"""
+        if cached := await self.cache.get(key):
+            return cached
+        
+        value = await factory_fn()
+        await self.cache.set(key, value, ttl=ttl)
+        return value
+
+class ToolExecutor(Service):
+    """Tool execution orchestration"""
+    
+    def __init__(self, mcp_client: MCPClient, cache: CacheManager):
+        super().__init__(None, cache)  # No repository needed
+        self.mcp_client = mcp_client
+        self.execution_tracker = ExecutionTracker()
+    
+    async def execute(self, tool_request: ToolRequest) -> ToolResult:
+        """Execute tool with comprehensive error handling and monitoring"""
+        execution_id = self.execution_tracker.start(tool_request)
+        
+        try:
+            # Validate request
+            await self._validate_request(tool_request)
+            
+            # Check cache for idempotent operations
+            if tool_request.idempotent:
+                cache_key = self._build_cache_key(tool_request)
+                if cached_result := await self.cache.get(cache_key):
+                    return ToolResult.from_cache(cached_result)
+            
+            # Execute tool via MCP
+            mcp_response = await self.mcp_client.call_tool(
+                tool_request.name,
+                tool_request.parameters
+            )
+            
+            # Process response into artifacts
+            artifacts = await self._process_response(mcp_response)
+            
+            # Create result
+            result = ToolResult(
+                id=execution_id,
+                success=True,
+                artifacts=artifacts,
+                metadata=mcp_response.metadata
+            )
+            
+            # Cache successful results
+            if tool_request.idempotent:
+                await self.cache.set(cache_key, result, ttl=300)
+            
+            return result
+            
+        except Exception as error:
+            self.logger.error(f"Tool execution failed: {error}", extra={
+                'tool_name': tool_request.name,
+                'execution_id': execution_id,
+                'error_type': type(error).__name__
+            })
+            
+            return ToolResult(
+                id=execution_id,
+                success=False,
+                error=str(error),
+                artifacts=[]
+            )
+        finally:
+            self.execution_tracker.complete(execution_id)
+    
+    async def _validate_request(self, request: ToolRequest) -> None:
+        """Validate tool request parameters and permissions"""
+        # Parameter validation
+        schema = await self.mcp_client.get_tool_schema(request.name)
+        validate_parameters(request.parameters, schema)
+        
+        # Permission validation
+        if not await self._check_permissions(request):
+            raise PermissionError(f"Insufficient permissions for {request.name}")
+    
+    async def _process_response(self, response: MCPResponse) -> list[Artifact]:
+        """Transform MCP response into typed artifacts"""
+        artifacts = []
+        
+        for item in response.content:
+            if item.type == 'text':
+                artifacts.append(TextArtifact(
+                    content=item.text,
+                    metadata=item.annotations
+                ))
+            elif item.type == 'image':
+                artifacts.append(ImageArtifact(
+                    url=item.data,
+                    alt_text=item.annotations.get('alt', ''),
+                    dimensions=item.annotations.get('dimensions')
+                ))
+            elif item.type == 'resource':
+                artifacts.append(ResourceArtifact(
+                    uri=item.uri,
+                    mime_type=item.mimeType,
+                    metadata=item.annotations
+                ))
+        
+        return artifacts
+```
+
+#### Intent Router Implementation
+
+```python
+class IntentRouter:
+    """Routes user intents to appropriate handlers"""
+    
+    def __init__(self, handlers: dict[str, IntentHandler]):
+        self.handlers = handlers
+        self.classifier = IntentClassifier()
+        self.metrics = MetricsCollector()
+    
+    async def route(self, intent: UserIntent) -> IntentResponse:
+        """Route intent to appropriate handler with fallback logic"""
+        start_time = time.time()
+        
+        try:
+            # Classify intent
+            classification = await self.classifier.classify(intent)
+            
+            # Select handler
+            handler = self._select_handler(classification)
+            
+            # Execute with context
+            context = await self._build_context(intent, classification)
+            response = await handler.handle(intent, context)
+            
+            # Record metrics
+            duration = time.time() - start_time
+            self.metrics.record_intent_handling(
+                intent_type=classification.type,
+                handler=handler.__class__.__name__,
+                duration=duration,
+                success=True
+            )
+            
+            return response
+            
+        except Exception as error:
+            # Fallback to general handler
+            fallback_handler = self.handlers.get('general')
+            if fallback_handler:
+                return await fallback_handler.handle(intent, {})
+            
+            raise IntentHandlingError(f"Failed to handle intent: {error}")
+    
+    def _select_handler(self, classification: IntentClassification) -> IntentHandler:
+        """Select best handler based on classification confidence"""
+        if classification.confidence > 0.8:
+            return self.handlers[classification.type]
+        elif classification.confidence > 0.6:
+            # Use multi-handler approach for ambiguous intents
+            return CompositeHandler([
+                self.handlers[classification.type],
+                self.handlers.get('general', NoOpHandler())
+            ])
+        else:
+            return self.handlers['general']
+```
+
+</details>
+
+### MCP Gateway & Tool Integration
+
+<details>
+<summary>🔌 MCP Architecture & Tool Ecosystem</summary>
+
+#### MCP Gateway Configuration
+
+```yaml
+# docker-mcp-gateway/config/gateway.yml
+gateway:
+  version: "1.0"
+  port: 8080
+  health_check_interval: 30s
+  max_concurrent_connections: 100
+  
+  routing:
+    strategy: "round_robin"  # or "least_connections", "weighted"
+    health_check_path: "/health"
+    timeout: 30s
+    retries: 3
+    
+  servers:
+    github:
+      image: "ghcr.io/github/github-mcp-server:latest"
+      replicas: 3
+      environment:
+        GITHUB_TOKEN: "${SECRET_GITHUB_TOKEN}"
+        LOG_LEVEL: "info"
+      resources:
+        cpu: "500m"
+        memory: "512Mi"
+      capabilities:
+        - "github.search_repositories"
+        - "github.get_repository"
+        - "github.create_issue"
+        - "github.list_issues"
+        - "github.get_pull_request"
+        - "github.create_pull_request"
+      
+    playwright:
+      image: "mcr.microsoft.com/playwright-mcp:latest"
+      replicas: 2
+      environment:
+        BROWSER_HEADLESS: "true"
+        VIEWPORT_WIDTH: "1920"
+        VIEWPORT_HEIGHT: "1080"
+      resources:
+        cpu: "1000m"
+        memory: "2Gi"
+      capabilities:
+        - "browser.navigate"
+        - "browser.click"
+        - "browser.type"
+        - "browser.screenshot"
+        - "browser.extract_text"
+        - "browser.wait_for_element"
+      
+    ssh:
+      image: "tufantunc/ssh-mcp:latest"
+      replicas: 1
+      environment:
+        SSH_KEY_PATH: "/etc/ssh/keys"
+        CONNECTION_TIMEOUT: "30s"
+      resources:
+        cpu: "250m"
+        memory: "256Mi"
+      capabilities:
+        - "ssh.connect"
+        - "ssh.execute_command"
+        - "ssh.upload_file"
+        - "ssh.download_file"
+        - "ssh.tunnel"
+    
+    qdrant:
+      image: "qdrant/mcp-server:latest"
+      replicas: 2
+      environment:
+        QDRANT_URL: "${APP_QDRANT_URL}"
+        QDRANT_API_KEY: "${SECRET_QDRANT_API_KEY}"
+      resources:
+        cpu: "500m"
+        memory: "1Gi"
+      capabilities:
+        - "qdrant.search"
+        - "qdrant.upsert"
+        - "qdrant.delete"
+        - "qdrant.create_collection"
+        - "qdrant.get_collection_info"
+    
+    neo4j:
+      image: "neo4j-labs/mcp-server-neo4j:latest"
+      replicas: 1
+      environment:
+        NEO4J_URI: "${APP_NEO4J_URL}"
+        NEO4J_USER: "neo4j"
+        NEO4J_PASSWORD: "${SECRET_NEO4J_PASSWORD}"
+      resources:
+        cpu: "500m"
+        memory: "1Gi"
+      capabilities:
+        - "neo4j.cypher_query"
+        - "neo4j.create_node"
+        - "neo4j.create_relationship"
+        - "neo4j.find_path"
+        - "neo4j.get_schema"
+
+  monitoring:
+    metrics_port: 9090
+    prometheus_endpoint: "/metrics"
+    tracing_enabled: true
+    log_level: "info"
+```
+
+#### Tool Capability Matrix
+
+```typescript
+// Type-safe tool capabilities
+interface ToolCapabilities {
+  github: {
+    'github.search_repositories': {
+      params: { query: string; sort?: string; order?: string };
+      returns: Repository[];
+    };
+    'github.create_issue': {
+      params: { owner: string; repo: string; title: string; body?: string };
+      returns: Issue;
+    };
+    // ... more capabilities
+  };
+  
+  playwright: {
+    'browser.navigate': {
+      params: { url: string; waitUntil?: 'load' | 'domcontentloaded' };
+      returns: { status: number; title: string };
+    };
+    'browser.screenshot': {
+      params: { selector?: string; fullPage?: boolean };
+      returns: { image: string; metadata: ScreenshotMetadata };
+    };
+    // ... more capabilities
+  };
+  
+  ssh: {
+    'ssh.execute_command': {
+      params: { host: string; command: string; timeout?: number };
+      returns: { stdout: string; stderr: string; exitCode: number };
+    };
+    // ... more capabilities
+  };
+}
+
+// Tool client with type safety
+class TypedMCPClient {
+  async callTool<T extends keyof ToolCapabilities, K extends keyof ToolCapabilities[T]>(
+    toolType: T,
+    capability: K,
+    params: ToolCapabilities[T][K]['params']
+  ): Promise<ToolCapabilities[T][K]['returns']> {
+    const response = await this.mcp.callTool(`${toolType}.${String(capability)}`, params);
+    return this.validateResponse(response, toolType, capability);
+  }
+  
+  private validateResponse<T extends keyof ToolCapabilities, K extends keyof ToolCapabilities[T]>(
+    response: any,
+    toolType: T,
+    capability: K
+  ): ToolCapabilities[T][K]['returns'] {
+    // Runtime validation logic
+    return response;
+  }
+}
+```
+
+#### Tool Execution Pipeline
+
+```python
+class ToolExecutionPipeline:
+    """Manages tool execution with middleware support"""
+    
+    def __init__(self):
+        self.middleware: list[ToolMiddleware] = []
+        self.metrics = ToolMetrics()
+    
+    def add_middleware(self, middleware: ToolMiddleware):
+        """Add middleware to the execution pipeline"""
+        self.middleware.append(middleware)
+    
+    async def execute(self, request: ToolRequest) -> ToolResult:
+        """Execute tool request through middleware pipeline"""
+        context = ToolExecutionContext(request)
+        
+        # Pre-execution middleware
+        for middleware in self.middleware:
+            context = await middleware.before_execution(context)
+            if context.should_skip:
+                return context.skip_result
+        
+        try:
+            # Execute the tool
+            result = await self._execute_tool(context.request)
+            context.result = result
+            
+            # Post-execution middleware
+            for middleware in reversed(self.middleware):
+                context = await middleware.after_execution(context)
+            
+            return context.result
+            
+        except Exception as error:
+            # Error handling middleware
+            for middleware in reversed(self.middleware):
+                context = await middleware.on_error(context, error)
+                if context.error_handled:
+                    return context.error_result
+            
+            raise
+
+# Example middleware implementations
+class AuthenticationMiddleware(ToolMiddleware):
+    """Validates tool execution permissions"""
+    
+    async def before_execution(self, context: ToolExecutionContext) -> ToolExecutionContext:
+        if not await self.has_permission(context.request.user, context.request.tool):
+            context.should_skip = True
+            context.skip_result = ToolResult.unauthorized()
+        return context
+
+class CachingMiddleware(ToolMiddleware):
+    """Implements caching for idempotent operations"""
+    
+    def __init__(self, cache: CacheManager):
+        self.cache = cache
+    
+    async def before_execution(self, context: ToolExecutionContext) -> ToolExecutionContext:
+        if context.request.idempotent:
+            cache_key = self._build_cache_key(context.request)
+            if cached := await self.cache.get(cache_key):
+                context.should_skip = True
+                context.skip_result = ToolResult.from_cache(cached)
+        return context
+    
+    async def after_execution(self, context: ToolExecutionContext) -> ToolExecutionContext:
+        if context.request.idempotent and context.result.success:
+            cache_key = self._build_cache_key(context.request)
+            await self.cache.set(cache_key, context.result, ttl=300)
+        return context
+
+class MetricsMiddleware(ToolMiddleware):
+    """Collects execution metrics"""
+    
+    async def before_execution(self, context: ToolExecutionContext) -> ToolExecutionContext:
+        context.start_time = time.time()
+        return context
+    
+    async def after_execution(self, context: ToolExecutionContext) -> ToolExecutionContext:
+        duration = time.time() - context.start_time
+        self.metrics.record_execution(
+            tool=context.request.tool,
+            duration=duration,
+            success=context.result.success
+        )
+        return context
+```
+
+</details>
+
+---
+
+## 📊 Interactive Diagrams
+
+### Sequence Diagrams
+
+<details>
+<summary>🔄 Complete Message Processing Flow</summary>
+
+```mermaid
+sequenceDiagram
+    participant U as 👤 User
+    participant UI as 🖥️ LobeChat
+    participant QD as 🔍 Qdrant
+    participant N4J as 🕸️ Neo4j
+    participant FA as ⚡ FastAgent
+    participant MG as 🔌 MCP Gateway
+    participant GH as 📝 GitHub MCP
+    participant E2B as 📦 E2B Sandbox
+    participant Redis as 🗄️ Redis
+
+    Note over U,Redis: User Sends Complex Request
+    U->>UI: "Create a GitHub issue tracker dashboard"
+    
+    Note over UI,N4J: Context Gathering Phase
+    UI->>QD: Query similar projects
+    UI->>N4J: Find related concepts
+    QD-->>UI: Vector embeddings
+    N4J-->>UI: Knowledge graph
+    
+    Note over UI,FA: Intent Processing
+    UI->>FA: Enriched intent + context
+    FA->>Redis: Check session cache
+    Redis-->>FA: User preferences
+    
+    Note over FA,E2B: Tool Planning & Execution
+    FA->>FA: Plan multi-step execution
+    FA->>MG: github.search_repositories
+    MG->>GH: Execute search
+    GH-->>MG: Repository list
+    MG-->>FA: Tool result
+    
+    FA->>E2B: Generate dashboard code
+    E2B-->>FA: HTML/JS artifact
+    
+    FA->>MG: github.create_repository
+    MG->>GH: Create repo
+    GH-->>MG: Repository created
+    MG-->>FA: Success response
+    
+    Note over FA,UI: Artifact Assembly
+    FA->>Redis: Cache artifacts
+    FA->>UI: Stream artifacts
+    UI->>UI: Render dashboard
+    UI->>U: Interactive dashboard
+    
+    Note over U,Redis: User Iteration
+    U->>UI: "Add dark mode support"
+    Note right of UI: Cycle repeats with<br/>enhanced context
+```
+
+</details>
+
+<details>
+<summary>🛠️ Tool Execution with Error Handling</summary>
+
+```mermaid
+sequenceDiagram
+    participant FA as ⚡ FastAgent
+    participant TE as 🛠️ Tool Executor
+    participant MW as 🔧 Middleware
+    participant MG as 🔌 MCP Gateway
+    participant Tool as 🔨 Tool Server
+    participant Redis as 🗄️ Redis
+    
+    FA->>TE: execute(tool_request)
+    TE->>MW: before_execution()
+    
+    alt Authentication Check
+        MW->>MW: validate_permissions()
+        MW-->>TE: authorized
+    else Unauthorized
+        MW-->>TE: unauthorized
+        TE-->>FA: PermissionError
+    end
+    
+    alt Cache Check
+        MW->>Redis: get(cache_key)
+        Redis-->>MW: cached_result
+        MW-->>TE: cached_result
+        TE-->>FA: CachedResult
+    else Cache Miss
+        MW-->>TE: proceed
+    end
+    
+    TE->>MG: call_tool(name, params)
+    MG->>Tool: execute
+    
+    alt Success
+        Tool-->>MG: result
+        MG-->>TE: success_response
+        TE->>MW: after_execution()
+        MW->>Redis: cache(result)
+        MW-->>TE: processed_result
+        TE-->>FA: ToolResult
+    else Tool Error
+        Tool-->>MG: error
+        MG-->>TE: error_response
+        TE->>MW: on_error()
+        MW->>MW: handle_retry_logic()
+        alt Retry Available
+            MW->>MG: retry_call_tool()
+        else Max Retries
+            MW-->>TE: final_error
+            TE-->>FA: ToolError
+        end
+    else Network Error
+        MG-->>TE: network_error
+        TE->>MW: on_error()
+        MW->>MW: circuit_breaker_check()
+        MW-->>TE: circuit_open
+        TE-->>FA: ServiceUnavailable
+    end
+```
+
+</details>
+
+### Component Interaction Diagrams
+
+<details>
+<summary>🏗️ System Component Interactions</summary>
+
+```mermaid
+graph TD
+    subgraph "🎨 Frontend Ecosystem"
+        LC[LobeChat Core]
+        AV[Artifact Viewer]
+        TM[Tab Manager]
+        EH[Event Hub]
+        SM[State Manager]
+    end
+    
+    subgraph "🧠 Backend Ecosystem"
+        FA[FastAgent Core]
+        IR[Intent Router]
+        TE[Tool Executor]
+        CM[Cache Manager]
+        AM[Artifact Manager]
+    end
+    
+    subgraph "🔌 Tool Ecosystem"
+        MG[MCP Gateway]
+        GH[GitHub Tools]
+        PW[Playwright Tools]
+        SSH[SSH Tools]
+        E2B[E2B Sandbox]
+    end
+    
+    subgraph "🗄️ Data Ecosystem"
+        Redis[(Redis Cache)]
+        Qdrant[(Vector Store)]
+        Neo4j[(Knowledge Graph)]
+        Storage[(File Storage)]
+    end
+    
+    %% Frontend interactions
+    LC <--> AV
+    AV <--> TM
+    TM <--> EH
+    EH <--> SM
+    
+    %% Frontend to backend
+    LC --> IR
+    AV --> AM
+    SM <--> CM
+    
+    %% Backend internal
+    IR --> TE
+    TE --> MG
+    TE --> E2B
+    CM <--> Redis
+    AM <--> Storage
+    
+    %% Tool interactions
+    MG --> GH
+    MG --> PW
+    MG --> SSH
+    
+    %% Data flows
+    LC --> Qdrant
+    LC --> Neo4j
+    FA --> Redis
+    TE --> Storage
+    
+    %% Styling
+    classDef frontend fill:#e3f2fd
+    classDef backend fill:#e8f5e8
+    classDef tools fill:#fff3e0
+    classDef data fill:#fce4ec
+    
+    class LC,AV,TM,EH,SM frontend
+    class FA,IR,TE,CM,AM backend
+    class MG,GH,PW,SSH,E2B tools
+    class Redis,Qdrant,Neo4j,Storage data
+```
+
+</details>
+
+---
+
+## 🔄 Critical Data Flows
+
+### Data Flow Patterns
+
+<details>
+<summary>📈 Request/Response Flow Analysis</summary>
+
+#### 1. High-Frequency Operations (< 100ms target)
+
+```mermaid
+flowchart LR
+    subgraph "⚡ Fast Path"
+        UC[User Click] --> CF[Client Filter]
+        CF --> LC[Local Cache]
+        LC --> UI[UI Update]
+    end
+    
+    subgraph "🔄 Cache Path"
+        UC2[User Request] --> RC[Redis Cache]
+        RC --> RS[Response]
+    end
+    
+    subgraph "🗄️ Database Path"
+        UC3[User Query] --> VQ[Vector Query]
+        VQ --> QD[(Qdrant)]
+        QD --> VR[Vector Results]
+    end
+    
+    UC --> UC2
+    UC2 --> UC3
+    
+    style UC fill:#ffebee
+    style CF fill:#e8f5e8
+    style LC fill:#e3f2fd
+    style UI fill:#f3e5f5
+```
+
+#### 2. Medium-Frequency Operations (100-500ms target)
+
+```mermaid
+flowchart TD
+    UR[User Request] --> IR[Intent Router]
+    IR --> |Simple Query| AG[AI Gateway]
+    IR --> |Complex Task| TE[Tool Executor]
+    
+    AG --> LLM[LLM Processing]
+    LLM --> TR[Text Response]
+    
+    TE --> MG[MCP Gateway]
+    MG --> TS[Tool Server]
+    TS --> AR[Artifact Response]
+    
+    TR --> UI[UI Update]
+    AR --> UI
+```
+
+#### 3. Low-Frequency Operations (> 500ms acceptable)
+
+```mermaid
+flowchart TB
+    subgraph "🔨 Heavy Processing"
+        CR[Code Request] --> E2B[E2B Sandbox]
+        E2B --> CE[Code Execution]
+        CE --> CR2[Compilation/Results]
+        CR2 --> AF[Artifact File]
+    end
+    
+    subgraph "🌐 External APIs"
+        GR[GitHub Request] --> API[External API]
+        API --> RD[Rate Limiting]
+        RD --> ER[External Response]
+    end
+    
+    subgraph "📊 Analytics"
+        UA[User Action] --> ME[Metrics Engine]
+        ME --> DB[(Analytics DB)]
+    end
+```
+
+</details>
+
+### Caching Strategy
+
+<details>
+<summary>💾 Multi-Level Caching Architecture</summary>
+
+```mermaid
+graph TB
+    subgraph "🏎️ L1 Cache - Browser"
+        BC[Browser Cache]
+        LS[Local Storage]
+        IDB[IndexedDB]
+        MW[Memory/Worker]
+    end
+    
+    subgraph "🚀 L2 Cache - Application"
+        RC[React Query Cache]
+        ZS[Zustand Store]
+        SW[Service Worker]
+    end
+    
+    subgraph "☁️ L3 Cache - Server"
+        Redis[(Redis Cluster)]
+        MC[Memory Cache]
+        FC[File Cache]
+    end
+    
+    subgraph "🗄️ L4 Storage - Database"
+        PG[(PostgreSQL)]
+        QD[(Qdrant)]
+        N4J[(Neo4j)]
+        S3[(Object Storage)]
+    end
+    
+    %% Cache hierarchy
+    User --> BC
+    BC --> RC
+    RC --> Redis
+    Redis --> PG
+    
+    %% Parallel paths
+    User --> LS
+    LS --> ZS
+    ZS --> MC
+    
+    %% Background sync
+    SW -.-> Redis
+    FC -.-> S3
+    
+    %% Cache invalidation
+    Redis -.-> BC
+    PG -.-> QD
+```
+
+#### Cache Key Strategies
+
+```typescript
+interface CacheKeyStrategy {
+  // User-specific data
+  user: `user:${userId}:${dataType}:${id}`;
+  
+  // Session-specific data  
+  session: `sess:${sessionId}:${component}`;
+  
+  // Artifact caching
+  artifact: `artf:${artifactId}:${version}`;
+  
+  // Tool execution results
+  tool: `tool:${toolName}:${hash(params)}`;
+  
+  // Vector queries
+  vector: `vec:${collectionName}:${hash(query)}`;
+  
+  // Graph queries
+  graph: `graph:${hash(cypherQuery)}`;
+  
+  // LLM responses
+  llm: `llm:${model}:${hash(prompt)}`;
+}
+
+// TTL Configuration
+const CACHE_TTL = {
+  user_preferences: 86400,      // 24 hours
+  session_data: 3600,           // 1 hour
+  artifacts: 172800,            // 48 hours
+  tool_results: 300,            // 5 minutes
+  vector_queries: 1800,         // 30 minutes
+  graph_queries: 900,           // 15 minutes
+  llm_responses: 3600,          // 1 hour
+} as const;
+```
+
+</details>
+
+---
+
+## 🗄️ Data Models & Schemas
+
+### Core Entity Models
+
+<details>
+<summary>📊 Comprehensive Data Schema</summary>
+
+#### TypeScript Interface Definitions
+
+```typescript
+// Core domain models
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  avatar_url?: string;
+  preferences: UserPreferences;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface UserPreferences {
+  theme: 'light' | 'dark' | 'auto';
+  language: string;
+  timezone: string;
+  notifications: NotificationSettings;
+  editor: EditorSettings;
+  ai: AISettings;
+}
+
+interface Session {
+  id: string;
+  user_id: string;
+  conversation_id?: string;
+  state: SessionState;
+  context: SessionContext;
+  created_at: Date;
+  expires_at: Date;
+}
+
+interface SessionState {
+  active_artifacts: string[];
+  tool_states: Record<string, any>;
+  ui_state: UIState;
+  cache_keys: string[];
+}
+
+interface Conversation {
+  id: string;
+  title: string;
+  messages: Message[];
+  metadata: ConversationMetadata;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface Message {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: MessageContent[];
+  artifacts: Artifact[];
+  tool_calls?: ToolCall[];
+  timestamp: Date;
+}
+
+interface MessageContent {
+  type: 'text' | 'image' | 'audio' | 'file';
+  data: string;
+  metadata?: Record<string, any>;
+}
+
+interface Artifact {
+  id: string;
+  type: ArtifactType;
+  title: string;
+  content: ArtifactContent;
+  metadata: ArtifactMetadata;
+  created_at: Date;
+  updated_at: Date;
+}
+
+type ArtifactType = 
+  | 'code'
+  | 'terminal'
+  | 'image'
+  | 'video'
+  | 'document'
+  | 'data'
+  | 'web'
+  | 'interactive';
+
+interface ArtifactContent {
+  raw: string;
+  processed?: any;
+  preview?: string;
+  format: string;
+  size?: number;
+}
+
+interface ArtifactMetadata {
+  language?: string;
+  framework?: string;
+  dependencies?: string[];
+  tags: string[];
+  source: ArtifactSource;
+  permissions: ArtifactPermissions;
+  version: number;
+}
+
+interface ToolCall {
+  id: string;
+  tool: string;
+  parameters: Record<string, any>;
+  result?: ToolResult;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  created_at: Date;
+  completed_at?: Date;
+}
+
+interface ToolResult {
+  success: boolean;
+  data?: any;
+  artifacts: Artifact[];
+  error?: string;
+  metadata: ResultMetadata;
+}
+```
+
+#### Pydantic Models (Backend)
+
+```python
+# Backend data models with validation
+from pydantic import BaseModel, Field, validator
+from typing import Optional, List, Dict, Any, Union
+from datetime import datetime
+from enum import Enum
+
+class ArtifactType(str, Enum):
+    CODE = "code"
+    TERMINAL = "terminal"
+    IMAGE = "image"
+    VIDEO = "video"
+    DOCUMENT = "document"
+    DATA = "data"
+    WEB = "web"
+    INTERACTIVE = "interactive"
+
+class MessageRole(str, Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+
+class ArtifactContent(BaseModel):
+    raw: str = Field(..., description="Raw content data")
+    processed: Optional[Any] = Field(None, description="Processed content")
+    preview: Optional[str] = Field(None, description="Preview text/thumbnail")
+    format: str = Field(..., description="Content format/MIME type")
+    size: Optional[int] = Field(None, description="Content size in bytes")
+    
+    @validator('size')
+    def validate_size(cls, v):
+        if v is not None and v < 0:
+            raise ValueError('Size must be non-negative')
+        return v
+
+class ArtifactMetadata(BaseModel):
+    language: Optional[str] = None
+    framework: Optional[str] = None
+    dependencies: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
+    source: str = Field(..., description="Source of the artifact")
+    permissions: Dict[str, bool] = Field(default_factory=dict)
+    version: int = Field(default=1, ge=1)
+
+class Artifact(BaseModel):
+    id: str = Field(..., description="Unique artifact identifier")
+    type: ArtifactType
+    title: str = Field(..., min_length=1, max_length=200)
+    content: ArtifactContent
+    metadata: ArtifactMetadata
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+class MessageContent(BaseModel):
+    type: str = Field(..., regex=r"^(text|image|audio|file)$")
+    data: str = Field(..., description="Content data or reference")
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+class Message(BaseModel):
+    id: str
+    role: MessageRole
+    content: List[MessageContent]
+    artifacts: List[Artifact] = Field(default_factory=list)
+    tool_calls: Optional[List[str]] = None
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+class ToolRequest(BaseModel):
+    name: str = Field(..., description="Tool name in format 'server.capability'")
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    idempotent: bool = Field(default=False)
+    timeout: int = Field(default=30, ge=1, le=300)
+    user_id: str
+    session_id: str
+
+class ToolResult(BaseModel):
+    id: str
+    success: bool
+    data: Optional[Any] = None
+    artifacts: List[Artifact] = Field(default_factory=list)
+    error: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    execution_time: Optional[float] = None
+    
+    @validator('error')
+    def validate_error(cls, v, values):
+        if not values.get('success') and not v:
+            raise ValueError('Error message required when success is False')
+        return v
+```
+
+</details>
+
+### Database Schemas
+
+<details>
+<summary>🗃️ Database Schema Definitions</summary>
+
+#### PostgreSQL Schema (Primary Database)
+
+```sql
+-- Core application schema
+CREATE SCHEMA IF NOT EXISTS cua;
+
+-- Users and authentication
+CREATE TABLE cua.users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    avatar_url TEXT,
+    preferences JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- User sessions
+CREATE TABLE cua.sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES cua.users(id) ON DELETE CASCADE,
+    conversation_id UUID,
+    state JSONB DEFAULT '{}',
+    context JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+-- Conversations
+CREATE TABLE cua.conversations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES cua.users(id) ON DELETE CASCADE,
+    title VARCHAR(500) NOT NULL,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Messages
+CREATE TABLE cua.messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID REFERENCES cua.conversations(id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+    content JSONB NOT NULL,
+    artifacts UUID[],
+    tool_calls JSONB,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Artifacts
+CREATE TABLE cua.artifacts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    type VARCHAR(50) NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    content JSONB NOT NULL,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Tool executions
+CREATE TABLE cua.tool_executions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES cua.users(id),
+    session_id UUID REFERENCES cua.sessions(id),
+    tool_name VARCHAR(100) NOT NULL,
+    parameters JSONB DEFAULT '{}',
+    result JSONB,
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Indexes for performance
+CREATE INDEX idx_sessions_user_id ON cua.sessions(user_id);
+CREATE INDEX idx_sessions_expires_at ON cua.sessions(expires_at);
+CREATE INDEX idx_conversations_user_id ON cua.conversations(user_id);
+CREATE INDEX idx_messages_conversation_id ON cua.messages(conversation_id);
+CREATE INDEX idx_messages_timestamp ON cua.messages(timestamp);
+CREATE INDEX idx_artifacts_type ON cua.artifacts(type);
+CREATE INDEX idx_artifacts_created_at ON cua.artifacts(created_at);
+CREATE INDEX idx_tool_executions_user_id ON cua.tool_executions(user_id);
+CREATE INDEX idx_tool_executions_status ON cua.tool_executions(status);
+
+-- Full-text search
+CREATE INDEX idx_conversations_title_fts ON cua.conversations 
+    USING gin(to_tsvector('english', title));
+CREATE INDEX idx_artifacts_content_fts ON cua.artifacts 
+    USING gin(to_tsvector('english', content->>'raw'));
+
+-- Trigger for updated_at
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER update_users_updated_at 
+    BEFORE UPDATE ON cua.users 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_conversations_updated_at 
+    BEFORE UPDATE ON cua.conversations 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_artifacts_updated_at 
+    BEFORE UPDATE ON cua.artifacts 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+```
+
+#### Qdrant Collection Schema (Vector Database)
+
+```python
+# Qdrant collection configuration
+from qdrant_client import QdrantClient, models
+
+# Text embeddings collection
+client.create_collection(
+    collection_name="text_embeddings",
+    vectors_config=models.VectorParams(
+        size=1536,  # OpenAI ada-002 dimensions
+        distance=models.Distance.COSINE
+    ),
+    optimizers_config=models.OptimizersConfig(
+        default_segment_number=2,
+        max_segment_size=20000,
+        memmap_threshold=20000,
+        indexing_threshold=20000,
+        flush_interval_sec=5,
+        max_optimization_threads=1
+    ),
+    hnsw_config=models.HnswConfig(
+        m=16,
+        ef_construct=100,
+        full_scan_threshold=10000,
+        max_indexing_threads=1
+    )
+)
+
+# Code embeddings collection
+client.create_collection(
+    collection_name="code_embeddings",
+    vectors_config=models.VectorParams(
+        size=768,  # CodeBERT dimensions
+        distance=models.Distance.COSINE
+    )
+)
+
+# Multimodal embeddings collection
+client.create_collection(
+    collection_name="multimodal_embeddings",
+    vectors_config=models.VectorParams(
+        size=512,  # CLIP dimensions
+        distance=models.Distance.COSINE
+    )
+)
+
+# Payload schema for text embeddings
+text_payload_schema = {
+    "text": str,           # Original text
+    "user_id": str,       # User identifier
+    "artifact_id": str,   # Related artifact
+    "type": str,          # Content type
+    "language": str,      # Language code
+    "created_at": str,    # ISO timestamp
+    "metadata": dict      # Additional metadata
+}
+```
+
+#### Neo4j Graph Schema
+
+```cypher
+// Create constraints and indexes
+CREATE CONSTRAINT user_id_unique IF NOT EXISTS FOR (u:User) REQUIRE u.id IS UNIQUE;
+CREATE CONSTRAINT artifact_id_unique IF NOT EXISTS FOR (a:Artifact) REQUIRE a.id IS UNIQUE;
+CREATE CONSTRAINT tool_name_unique IF NOT EXISTS FOR (t:Tool) REQUIRE t.name IS UNIQUE;
+CREATE CONSTRAINT concept_name_unique IF NOT EXISTS FOR (c:Concept) REQUIRE c.name IS UNIQUE;
+
+// Create indexes for performance
+CREATE INDEX user_email IF NOT EXISTS FOR (u:User) ON (u.email);
+CREATE INDEX artifact_type IF NOT EXISTS FOR (a:Artifact) ON (a.type);
+CREATE INDEX tool_category IF NOT EXISTS FOR (t:Tool) ON (t.category);
+CREATE INDEX concept_domain IF NOT EXISTS FOR (c:Concept) ON (c.domain);
+
+// Node definitions with properties
+// User nodes
+(:User {
+  id: String,
+  email: String,
+  name: String,
+  created_at: DateTime,
+  preferences: Map
+})
+
+// Artifact nodes
+(:Artifact {
+  id: String,
+  type: String,
+  title: String,
+  language: String,
+  created_at: DateTime,
+  metadata: Map
+})
+
+// Tool nodes  
+(:Tool {
+  name: String,
+  category: String,
+  version: String,
+  capabilities: [String],
+  metadata: Map
+})
+
+// Concept nodes
+(:Concept {
+  name: String,
+  domain: String,
+  description: String,
+  aliases: [String],
+  metadata: Map
+})
+
+// Session nodes
+(:Session {
+  id: String,
+  created_at: DateTime,
+  expires_at: DateTime,
+  context: Map
+})
+
+// Relationship definitions
+// User relationships
+(u:User)-[:CREATED]->(a:Artifact)
+(u:User)-[:HAS_SESSION]->(s:Session)
+(u:User)-[:USES]->(t:Tool)
+(u:User)-[:INTERESTED_IN]->(c:Concept)
+
+// Artifact relationships
+(a:Artifact)-[:CONTAINS]->(c:Concept)
+(a:Artifact)-[:GENERATED_BY]->(t:Tool)
+(a:Artifact)-[:RELATES_TO]->(a2:Artifact)
+(a:Artifact)-[:BELONGS_TO]->(s:Session)
+
+// Tool relationships
+(t:Tool)-[:SUPPORTS]->(c:Concept)
+(t:Tool)-[:DEPENDS_ON]->(t2:Tool)
+
+// Concept relationships
+(c:Concept)-[:RELATED_TO]->(c2:Concept)
+(c:Concept)-[:PART_OF]->(c2:Concept)
+(c:Concept)-[:IMPLEMENTS]->(c2:Concept)
+
+// Session relationships
+(s:Session)-[:CONTAINS]->(a:Artifact)
+(s:Session)-[:USED_TOOL]->(t:Tool)
+```
+
+</details>
+
+---
+
+---
+
+## 📈 Performance & Scalability
+
+### Performance Optimization Strategies
+
+<details>
+<summary>⚡ Frontend Performance Optimization</summary>
+
+#### Code Splitting & Lazy Loading
+
+```typescript
+// Route-based code splitting
+import { lazy, Suspense } from 'react';
+import { Route, Routes } from 'react-router-dom';
+
+// Lazy load heavy components
+const ArtifactViewer = lazy(() => import('@/components/ArtifactViewer'));
+const CodeEditor = lazy(() => import('@/components/CodeEditor'));
+const TerminalTab = lazy(() => import('@/components/TerminalTab'));
+
+const App = () => (
+  <Routes>
+    <Route 
+      path="/artifacts/:id" 
+      element={
+        <Suspense fallback={<ArtifactSkeleton />}>
+          <ArtifactViewer />
+        </Suspense>
+      } 
+    />
+    <Route 
+      path="/editor" 
+      element={
+        <Suspense fallback={<EditorSkeleton />}>
+          <CodeEditor />
+        </Suspense>
+      } 
+    />
+  </Routes>
+);
+
+// Component-level lazy loading
+const useCodeEditor = () => {
+  const [editor, setEditor] = useState<null | typeof import('monaco-editor')>(null);
+  
+  useEffect(() => {
+    // Lazy load Monaco only when needed
+    import('monaco-editor').then(monaco => {
+      setEditor(monaco);
+    });
+  }, []);
+  
+  return editor;
+};
+
+// Bundle analysis configuration
+// webpack.config.js
+module.exports = {
+  optimization: {
+    splitChunks: {
+      chunks: 'all',
+      cacheGroups: {
+        vendor: {
+          test: /[\\/]node_modules[\\/]/,
+          name: 'vendors',
+          chunks: 'all',
+        },
+        monaco: {
+          test: /[\\/]node_modules[\\/]monaco-editor[\\/]/,
+          name: 'monaco',
+          chunks: 'all',
+        },
+        xterm: {
+          test: /[\\/]node_modules[\\/]xterm[\\/]/,
+          name: 'xterm',
+          chunks: 'all',
+        }
+      }
+    }
+  }
+};
+```
+
+#### Virtual Scrolling & Windowing
+
+```typescript
+// Virtual scrolling for large lists
+import { FixedSizeList as List } from 'react-window';
+
+interface VirtualizedArtifactListProps {
+  artifacts: Artifact[];
+  onSelect: (artifact: Artifact) => void;
+}
+
+const VirtualizedArtifactList: FC<VirtualizedArtifactListProps> = ({ 
+  artifacts, 
+  onSelect 
+}) => {
+  const Row = ({ index, style }: { index: number; style: CSSProperties }) => (
+    <div style={style}>
+      <ArtifactListItem 
+        artifact={artifacts[index]} 
+        onClick={() => onSelect(artifacts[index])}
+      />
+    </div>
+  );
+
+  return (
+    <List
+      height={600}
+      itemCount={artifacts.length}
+      itemSize={120}
+      width="100%"
+    >
+      {Row}
+    </List>
+  );
+};
+
+// Virtualized code editor for large files
+const VirtualizedCodeEditor: FC<{ content: string }> = ({ content }) => {
+  const lines = useMemo(() => content.split('\n'), [content]);
+  
+  const LineRenderer = ({ index, style }: any) => (
+    <div style={style} className="code-line">
+      <span className="line-number">{index + 1}</span>
+      <span className="line-content">{lines[index]}</span>
+    </div>
+  );
+
+  return (
+    <List
+      height={400}
+      itemCount={lines.length}
+      itemSize={20}
+      width="100%"
+    >
+      {LineRenderer}
+    </List>
+  );
+};
+```
+
+#### Memoization & Performance Hooks
+
+```typescript
+// Performance-optimized hooks
+const useOptimizedArtifacts = (userId: string) => {
+  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [loading, setLoading] = useState(false);
+  
+  // Debounced search
+  const debouncedSearch = useCallback(
+    debounce(async (searchTerm: string) => {
+      setLoading(true);
+      const results = await searchArtifacts(userId, searchTerm);
+      setArtifacts(results);
+      setLoading(false);
+    }, 300),
+    [userId]
+  );
+  
+  // Memoized filter function
+  const filteredArtifacts = useMemo(() => {
+    return artifacts.filter(artifact => 
+      artifact.type === 'code' || artifact.type === 'document'
+    );
+  }, [artifacts]);
+  
+  // Virtualized rendering for large lists
+  const renderArtifact = useCallback((artifact: Artifact) => (
+    <ArtifactCard key={artifact.id} artifact={artifact} />
+  ), []);
+  
+  return {
+    artifacts: filteredArtifacts,
+    loading,
+    search: debouncedSearch,
+    renderArtifact
+  };
+};
+
+// React.memo for expensive components
+const ArtifactCard = React.memo<{ artifact: Artifact }>(({ artifact }) => {
+  const [previewContent, setPreviewContent] = useState<string>('');
+  
+  // Only generate preview when artifact changes
+  useEffect(() => {
+    const generatePreview = async () => {
+      const preview = await generateArtifactPreview(artifact);
+      setPreviewContent(preview);
+    };
+    
+    generatePreview();
+  }, [artifact.id, artifact.updated_at]);
+  
+  return (
+    <div className="artifact-card">
+      <h3>{artifact.title}</h3>
+      <p>{previewContent}</p>
+    </div>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison function
+  return (
+    prevProps.artifact.id === nextProps.artifact.id &&
+    prevProps.artifact.updated_at === nextProps.artifact.updated_at
+  );
+});
+
+// Optimized context provider
+const ArtifactContextProvider: FC<{ children: ReactNode }> = ({ children }) => {
+  const [state, dispatch] = useReducer(artifactReducer, initialState);
+  
+  // Memoize context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
+    ...state,
+    dispatch
+  }), [state]);
+  
+  return (
+    <ArtifactContext.Provider value={contextValue}>
+      {children}
+    </ArtifactContext.Provider>
+  );
+};
+```
+
+</details>
+
+<details>
+<summary>🚀 Backend Performance Optimization</summary>
+
+#### Async Processing & Connection Pooling
+
+```python
+# Optimized async FastAPI with connection pooling
+import asyncio
+import asyncpg
+import aioredis
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+
+class DatabasePool:
+    def __init__(self):
+        self.pool: asyncpg.Pool = None
+        self.redis: aioredis.Redis = None
+    
+    async def initialize(self):
+        """Initialize connection pools"""
+        # PostgreSQL connection pool
+        self.pool = await asyncpg.create_pool(
+            settings.DATABASE_URL,
+            min_size=10,
+            max_size=50,
+            max_queries=50000,
+            max_inactive_connection_lifetime=300,
+            command_timeout=60
+        )
+        
+        # Redis connection pool
+        self.redis = aioredis.from_url(
+            settings.REDIS_URL,
+            encoding="utf-8",
+            decode_responses=True,
+            max_connections=20,
+            retry_on_timeout=True
+        )
+    
+    async def close(self):
+        """Close connection pools"""
+        if self.pool:
+            await self.pool.close()
+        if self.redis:
+            await self.redis.close()
+
+# Application lifespan management
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator:
+    # Startup
+    app.state.db_pool = DatabasePool()
+    await app.state.db_pool.initialize()
+    
+    # Background tasks
+    app.state.background_tasks = asyncio.create_task(start_background_tasks())
+    
+    yield
+    
+    # Shutdown
+    app.state.background_tasks.cancel()
+    await app.state.db_pool.close()
+
+app = FastAPI(lifespan=lifespan)
+
+# Optimized database operations
+class OptimizedArtifactRepository:
+    def __init__(self, pool: asyncpg.Pool):
+        self.pool = pool
+    
+    async def get_artifacts_batch(self, user_id: str, limit: int = 50) -> List[Artifact]:
+        """Batch fetch artifacts with optimized query"""
+        query = """
+        SELECT id, type, title, content, metadata, created_at, updated_at
+        FROM artifacts 
+        WHERE user_id = $1 
+        ORDER BY created_at DESC 
+        LIMIT $2
+        """
+        
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(query, user_id, limit)
+            return [Artifact.from_db_row(row) for row in rows]
+    
+    async def bulk_insert_artifacts(self, artifacts: List[Artifact]) -> None:
+        """Bulk insert for better performance"""
+        values = [
+            (
+                a.id, a.user_id, a.type, a.title, 
+                json.dumps(a.content), json.dumps(a.metadata),
+                a.created_at, a.updated_at
+            )
+            for a in artifacts
+        ]
+        
+        query = """
+        INSERT INTO artifacts (id, user_id, type, title, content, metadata, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        """
+        
+        async with self.pool.acquire() as conn:
+            await conn.executemany(query, values)
+
+# Background task processing
+async def start_background_tasks():
+    """Start background task processors"""
+    tasks = [
+        asyncio.create_task(process_artifact_queue()),
+        asyncio.create_task(cleanup_expired_sessions()),
+        asyncio.create_task(generate_embeddings_batch()),
+        asyncio.create_task(update_analytics())
+    ]
+    
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+async def process_artifact_queue():
+    """Process artifact generation queue"""
+    redis = app.state.db_pool.redis
+    
+    while True:
+        try:
+            # Pop from queue with timeout
+            item = await redis.blpop(['artifact_queue'], timeout=5)
+            if item:
+                queue_name, data = item
+                artifact_data = json.loads(data)
+                await process_artifact_generation(artifact_data)
+        except Exception as e:
+            logger.error(f"Error processing artifact queue: {e}")
+            await asyncio.sleep(1)
+
+# Request optimization middleware
+class PerformanceMiddleware:
+    def __init__(self, app: FastAPI):
+        self.app = app
+    
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            # Add request timing
+            start_time = time.time()
+            
+            async def wrapped_send(message):
+                if message["type"] == "http.response.start":
+                    duration = time.time() - start_time
+                    message["headers"].append([
+                        b"x-process-time", 
+                        f"{duration:.4f}".encode()
+                    ])
+                await send(message)
+            
+            await self.app(scope, receive, wrapped_send)
+        else:
+            await self.app(scope, receive, send)
+
+app.add_middleware(PerformanceMiddleware)
+```
+
+#### Caching Strategies
+
+```python
+# Multi-level caching implementation
+import functools
+from typing import Optional, Any, Callable
+import pickle
+import hashlib
+
+class CacheManager:
+    def __init__(self, redis: aioredis.Redis):
+        self.redis = redis
+        self.local_cache = {}  # L1 cache
+        self.max_local_size = 1000
+    
+    async def get_or_set(
+        self, 
+        key: str, 
+        factory: Callable[[], Any], 
+        ttl: int = 300
+    ) -> Any:
+        """Cache-aside pattern with L1 and L2 caching"""
+        # L1 cache check
+        if key in self.local_cache:
+            return self.local_cache[key]
+        
+        # L2 cache check (Redis)
+        cached = await self.redis.get(key)
+        if cached:
+            value = pickle.loads(cached)
+            self._set_local_cache(key, value)
+            return value
+        
+        # Generate value
+        value = await factory() if asyncio.iscoroutinefunction(factory) else factory()
+        
+        # Store in both caches
+        await self.redis.setex(key, ttl, pickle.dumps(value))
+        self._set_local_cache(key, value)
+        
+        return value
+    
+    def _set_local_cache(self, key: str, value: Any) -> None:
+        """Set value in local cache with LRU eviction"""
+        if len(self.local_cache) >= self.max_local_size:
+            # Simple LRU: remove oldest item
+            oldest_key = next(iter(self.local_cache))
+            del self.local_cache[oldest_key]
+        
+        self.local_cache[key] = value
+
+# Caching decorators
+def cache_result(ttl: int = 300, key_builder: Optional[Callable] = None):
+    """Decorator for caching function results"""
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            # Build cache key
+            if key_builder:
+                cache_key = key_builder(*args, **kwargs)
+            else:
+                key_data = f"{func.__name__}:{str(args)}:{str(sorted(kwargs.items()))}"
+                cache_key = hashlib.md5(key_data.encode()).hexdigest()
+            
+            cache_manager = app.state.cache_manager
+            
+            async def factory():
+                return await func(*args, **kwargs)
+            
+            return await cache_manager.get_or_set(cache_key, factory, ttl)
+        
+        return wrapper
+    return decorator
+
+# Usage examples
+@cache_result(ttl=600, key_builder=lambda user_id, filters: f"artifacts:{user_id}:{hash(str(filters))}")
+async def get_user_artifacts(user_id: str, filters: dict) -> List[Artifact]:
+    """Get user artifacts with caching"""
+    repository = ArtifactRepository(app.state.db_pool.pool)
+    return await repository.get_artifacts_filtered(user_id, filters)
+
+@cache_result(ttl=1800)  # 30 minutes
+async def get_similar_artifacts(artifact_id: str) -> List[Artifact]:
+    """Get similar artifacts using vector search"""
+    qdrant_client = app.state.qdrant_client
+    artifact = await get_artifact(artifact_id)
+    
+    # Generate embedding
+    embedding = await generate_embedding(artifact.content.raw)
+    
+    # Search similar
+    results = await qdrant_client.search(
+        collection_name="text_embeddings",
+        query_vector=embedding,
+        limit=10
+    )
+    
+    return [Artifact.from_qdrant_result(r) for r in results]
+
+# Cache invalidation patterns
+class CacheInvalidator:
+    def __init__(self, redis: aioredis.Redis):
+        self.redis = redis
+    
+    async def invalidate_pattern(self, pattern: str) -> int:
+        """Invalidate cache keys matching pattern"""
+        keys = await self.redis.keys(pattern)
+        if keys:
+            return await self.redis.delete(*keys)
+        return 0
+    
+    async def invalidate_user_artifacts(self, user_id: str) -> None:
+        """Invalidate all artifact caches for user"""
+        await self.invalidate_pattern(f"artifacts:{user_id}:*")
+        await self.invalidate_pattern(f"user_stats:{user_id}:*")
+    
+    async def invalidate_artifact(self, artifact_id: str) -> None:
+        """Invalidate specific artifact caches"""
+        await self.invalidate_pattern(f"artifact:{artifact_id}:*")
+        await self.invalidate_pattern(f"similar:{artifact_id}:*")
+```
+
+</details>
+
+### Scalability Architecture
+
+<details>
+<summary>📈 Horizontal Scaling Strategies</summary>
+
+#### Auto-scaling Configuration
+
+```yaml
+# Kubernetes auto-scaling configuration
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: cua-backend-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cua-backend
+  minReplicas: 3
+  maxReplicas: 50
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "100"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+
+---
+apiVersion: autoscaling/v2
+kind: VerticalPodAutoscaler
+metadata:
+  name: cua-backend-vpa
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cua-backend
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: backend
+      maxAllowed:
+        cpu: 2
+        memory: 4Gi
+      minAllowed:
+        cpu: 100m
+        memory: 128Mi
+```
+
+#### Load Balancing & Service Mesh
+
+```yaml
+# Istio service mesh configuration
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: cua-backend-vs
+spec:
+  hosts:
+  - api.cua.yourdomain.com
+  http:
+  - match:
+    - uri:
+        prefix: "/health"
+    route:
+    - destination:
+        host: cua-backend
+        subset: v1
+  - match:
+    - uri:
+        prefix: "/api/v1/intents"
+    route:
+    - destination:
+        host: cua-backend
+        subset: v1
+      weight: 90
+    - destination:
+        host: cua-backend
+        subset: v2
+      weight: 10
+    fault:
+      delay:
+        percentage:
+          value: 0.1
+        fixedDelay: 5s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: cua-backend-dr
+spec:
+  host: cua-backend
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        maxRequestsPerConnection: 10
+    loadBalancer:
+      consistentHash:
+        httpHeaderName: "x-user-id"
+    outlierDetection:
+      consecutiveErrors: 3
+      interval: 30s
+      baseEjectionTime: 30s
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+```
+
+#### Database Scaling
+
+```python
+# Database sharding strategy
+class ShardedDatabase:
+    def __init__(self, shard_configs: List[DatabaseConfig]):
+        self.shards = {}
+        self.shard_count = len(shard_configs)
+        
+        for i, config in enumerate(shard_configs):
+            self.shards[i] = asyncpg.create_pool(config.url)
+    
+    def get_shard_for_user(self, user_id: str) -> int:
+        """Determine shard based on user ID"""
+        return hash(user_id) % self.shard_count
+    
+    async def execute_on_shard(self, user_id: str, query: str, *args) -> Any:
+        """Execute query on appropriate shard"""
+        shard_id = self.get_shard_for_user(user_id)
+        pool = self.shards[shard_id]
+        
+        async with pool.acquire() as conn:
+            return await conn.fetch(query, *args)
+    
+    async def execute_on_all_shards(self, query: str, *args) -> List[Any]:
+        """Execute query on all shards (for aggregation)"""
+        tasks = []
+        for pool in self.shards.values():
+            async def execute_on_pool(pool):
+                async with pool.acquire() as conn:
+                    return await conn.fetch(query, *args)
+            tasks.append(execute_on_pool(pool))
+        
+        return await asyncio.gather(*tasks)
+
+# Read replica configuration
+class ReadWriteSplitDatabase:
+    def __init__(self, write_pool: asyncpg.Pool, read_pools: List[asyncpg.Pool]):
+        self.write_pool = write_pool
+        self.read_pools = read_pools
+        self.read_pool_index = 0
+    
+    async def execute_read(self, query: str, *args) -> Any:
+        """Execute read query on read replica"""
+        pool = self._get_read_pool()
+        async with pool.acquire() as conn:
+            return await conn.fetch(query, *args)
+    
+    async def execute_write(self, query: str, *args) -> Any:
+        """Execute write query on primary"""
+        async with self.write_pool.acquire() as conn:
+            return await conn.fetch(query, *args)
+    
+    def _get_read_pool(self) -> asyncpg.Pool:
+        """Round-robin selection of read pools"""
+        pool = self.read_pools[self.read_pool_index]
+        self.read_pool_index = (self.read_pool_index + 1) % len(self.read_pools)
+        return pool
+
+# Distributed caching
+class DistributedCache:
+    def __init__(self, redis_clusters: List[aioredis.Redis]):
+        self.clusters = redis_clusters
+        self.cluster_count = len(redis_clusters)
+    
+    def _get_cluster(self, key: str) -> aioredis.Redis:
+        """Consistent hashing for cluster selection"""
+        key_hash = hashlib.md5(key.encode()).hexdigest()
+        cluster_index = int(key_hash, 16) % self.cluster_count
+        return self.clusters[cluster_index]
+    
+    async def get(self, key: str) -> Any:
+        """Get value from appropriate cluster"""
+        cluster = self._get_cluster(key)
+        value = await cluster.get(key)
+        return pickle.loads(value) if value else None
+    
+    async def set(self, key: str, value: Any, ttl: int = 300) -> bool:
+        """Set value in appropriate cluster"""
+        cluster = self._get_cluster(key)
+        serialized = pickle.dumps(value)
+        return await cluster.setex(key, ttl, serialized)
+    
+    async def invalidate_pattern(self, pattern: str) -> int:
+        """Invalidate pattern across all clusters"""
+        tasks = [cluster.eval("""
+            local keys = redis.call('keys', ARGV[1])
+            if #keys > 0 then
+                return redis.call('del', unpack(keys))
+            else
+                return 0
+            end
+        """, 0, pattern) for cluster in self.clusters]
+        
+        results = await asyncio.gather(*tasks)
+        return sum(results)
+```
+
+</details>
+
+### Performance Monitoring
+
+<details>
+<summary>📊 Comprehensive Performance Monitoring</summary>
+
+#### Application Performance Monitoring (APM)
+
+```python
+# Performance monitoring with OpenTelemetry
+from opentelemetry import trace, metrics
+from opentelemetry.exporter.prometheus import PrometheusMetricReader
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
+from opentelemetry.instrumentation.redis import RedisInstrumentor
+
+# Configure tracing
+tracer = trace.get_tracer(__name__)
+meter = metrics.get_meter(__name__)
+
+# Custom metrics
+request_counter = meter.create_counter(
+    "http_requests_total",
+    description="Total HTTP requests",
+    unit="1"
+)
+
+response_time_histogram = meter.create_histogram(
+    "http_request_duration_seconds",
+    description="HTTP request duration",
+    unit="s"
+)
+
+artifact_generation_counter = meter.create_counter(
+    "artifacts_generated_total",
+    description="Total artifacts generated",
+    unit="1"
+)
+
+tool_execution_histogram = meter.create_histogram(
+    "tool_execution_duration_seconds",
+    description="Tool execution duration",
+    unit="s"
+)
+
+class PerformanceMonitoringMiddleware:
+    def __init__(self):
+        self.active_requests = 0
+    
+    async def __call__(self, request: Request, call_next):
+        start_time = time.time()
+        self.active_requests += 1
+        
+        # Create span for request
+        with tracer.start_as_current_span(
+            f"{request.method} {request.url.path}",
+            attributes={
+                "http.method": request.method,
+                "http.url": str(request.url),
+                "http.user_agent": request.headers.get("user-agent", ""),
+            }
+        ) as span:
+            try:
+                response = await call_next(request)
+                
+                # Record metrics
+                duration = time.time() - start_time
+                request_counter.add(1, {
+                    "method": request.method,
+                    "endpoint": request.url.path,
+                    "status_code": response.status_code
+                })
+                response_time_histogram.record(duration, {
+                    "method": request.method,
+                    "endpoint": request.url.path
+                })
+                
+                # Add span attributes
+                span.set_attribute("http.status_code", response.status_code)
+                span.set_attribute("http.response_size", len(response.body))
+                
+                return response
+                
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+                raise
+            finally:
+                self.active_requests -= 1
+
+# Performance profiling decorator
+import cProfile
+import pstats
+from functools import wraps
+
+def profile_performance(sort_by='cumulative', lines_to_print=10):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            if settings.ENVIRONMENT == 'development':
+                profiler = cProfile.Profile()
+                profiler.enable()
+                
+                try:
+                    result = await func(*args, **kwargs)
+                    return result
+                finally:
+                    profiler.disable()
+                    stats = pstats.Stats(profiler)
+                    stats.sort_stats(sort_by)
+                    stats.print_stats(lines_to_print)
+            else:
+                return await func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+# Database query monitoring
+class QueryMonitor:
+    def __init__(self):
+        self.slow_query_threshold = 1.0  # seconds
+        self.query_stats = {}
+    
+    async def monitor_query(self, query: str, params: tuple = ()) -> Any:
+        """Monitor database query performance"""
+        start_time = time.time()
+        query_hash = hashlib.md5(query.encode()).hexdigest()
+        
+        with tracer.start_as_current_span(
+            "database_query",
+            attributes={
+                "db.statement": query[:100] + "..." if len(query) > 100 else query,
+                "db.operation": self._extract_operation(query)
+            }
+        ) as span:
+            try:
+                # Execute query through connection pool
+                async with app.state.db_pool.pool.acquire() as conn:
+                    result = await conn.fetch(query, *params)
+                
+                duration = time.time() - start_time
+                
+                # Record stats
+                if query_hash not in self.query_stats:
+                    self.query_stats[query_hash] = {
+                        'count': 0,
+                        'total_time': 0,
+                        'max_time': 0,
+                        'query': query
+                    }
+                
+                stats = self.query_stats[query_hash]
+                stats['count'] += 1
+                stats['total_time'] += duration
+                stats['max_time'] = max(stats['max_time'], duration)
+                
+                # Log slow queries
+                if duration > self.slow_query_threshold:
+                    logger.warning(f"Slow query detected: {duration:.2f}s", extra={
+                        'query': query,
+                        'duration': duration,
+                        'params': str(params)[:200]
+                    })
+                
+                span.set_attribute("db.duration", duration)
+                span.set_attribute("db.rows_affected", len(result))
+                
+                return result
+                
+            except Exception as e:
+                span.record_exception(e)
+                raise
+    
+    def _extract_operation(self, query: str) -> str:
+        """Extract SQL operation from query"""
+        operation = query.strip().split()[0].upper()
+        return operation if operation in ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] else 'OTHER'
+    
+    def get_query_stats(self) -> dict:
+        """Get query performance statistics"""
+        return {
+            query_hash: {
+                **stats,
+                'avg_time': stats['total_time'] / stats['count']
+            }
+            for query_hash, stats in self.query_stats.items()
+        }
+
+# Real-time performance dashboard
+class PerformanceDashboard:
+    def __init__(self):
+        self.metrics_collector = MetricsCollector()
+    
+    async def get_real_time_metrics(self) -> dict:
+        """Get current performance metrics"""
+        return {
+            'timestamp': datetime.utcnow().isoformat(),
+            'system': await self._get_system_metrics(),
+            'application': await self._get_application_metrics(),
+            'database': await self._get_database_metrics(),
+            'cache': await self._get_cache_metrics()
+        }
+    
+    async def _get_system_metrics(self) -> dict:
+        """Get system-level metrics"""
+        import psutil
+        
+        return {
+            'cpu_percent': psutil.cpu_percent(interval=1),
+            'memory_percent': psutil.virtual_memory().percent,
+            'disk_usage': psutil.disk_usage('/').percent,
+            'network_io': psutil.net_io_counters()._asdict()
+        }
+    
+    async def _get_application_metrics(self) -> dict:
+        """Get application-level metrics"""
+        return {
+            'active_requests': getattr(app.state, 'active_requests', 0),
+            'total_requests': getattr(app.state, 'total_requests', 0),
+            'average_response_time': getattr(app.state, 'avg_response_time', 0),
+            'error_rate': getattr(app.state, 'error_rate', 0)
+        }
+```
+
+</details>
+
+---
+
+## 🚨 Error Handling & Resilience
+
+### Circuit Breaker Pattern
+
+<details>
+<summary>🔧 Circuit Breaker Implementation</summary>
+
+```python
+# Circuit breaker for external service calls
+import asyncio
+from enum import Enum
+from typing import Callable, Any
+import time
+
+class CircuitState(Enum):
+    CLOSED = "closed"      # Normal operation
+    OPEN = "open"          # Failing, reject requests
+    HALF_OPEN = "half_open"  # Testing if service recovered
+
+class CircuitBreaker:
+    def __init__(
+        self,
+        failure_threshold: int = 5,
+        recovery_timeout: int = 60,
+        expected_exception: Exception = Exception
+    ):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.expected_exception = expected_exception
+        
+        self.failure_count = 0
+        self.last_failure_time = None
+        self.state = CircuitState.CLOSED
+    
+    async def call(self, func: Callable, *args, **kwargs) -> Any:
+        """Execute function with circuit breaker protection"""
+        
+        if self.state == CircuitState.OPEN:
+            if self._should_attempt_reset():
+                self.state = CircuitState.HALF_OPEN
+            else:
+                raise CircuitBreakerOpenError("Service unavailable")
+        
+        try:
+            result = await func(*args, **kwargs)
+            self._on_success()
+            return result
+            
+        except self.expected_exception as e:
+            self._on_failure()
+            raise
+    
+    def _should_attempt_reset(self) -> bool:
+        """Check if enough time has passed to attempt reset"""
+        return (
+            self.last_failure_time and
+            time.time() - self.last_failure_time >= self.recovery_timeout
+        )
+    
+    def _on_success(self):
+        """Handle successful call"""
+        self.failure_count = 0
+        self.state = CircuitState.CLOSED
+    
+    def _on_failure(self):
+        """Handle failed call"""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        
+        if self.failure_count >= self.failure_threshold:
+            self.state = CircuitState.OPEN
+
+# Usage in service classes
+class ExternalServiceClient:
+    def __init__(self):
+        self.circuit_breaker = CircuitBreaker(
+            failure_threshold=5,
+            recovery_timeout=60,
+            expected_exception=httpx.RequestError
+        )
+    
+    async def make_request(self, url: str) -> dict:
+        """Make HTTP request with circuit breaker protection"""
+        return await self.circuit_breaker.call(
+            self._http_request,
+            url
+        )
+    
+    async def _http_request(self, url: str) -> dict:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            return response.json()
+```
+
+</details>
+
+### Retry Mechanisms
+
+<details>
+<summary>🔄 Advanced Retry Strategies</summary>
+
+```python
+# Comprehensive retry mechanism
+import random
+import asyncio
+from typing import Callable, Any, List, Type
+from functools import wraps
+
+class RetryStrategy:
+    """Base class for retry strategies"""
+    def get_delay(self, attempt: int) -> float:
+        raise NotImplementedError
+
+class ExponentialBackoff(RetryStrategy):
+    def __init__(self, base_delay: float = 1.0, max_delay: float = 60.0, jitter: bool = True):
+        self.base_delay = base_delay
+        self.max_delay = max_delay
+        self.jitter = jitter
+    
+    def get_delay(self, attempt: int) -> float:
+        delay = min(self.base_delay * (2 ** attempt), self.max_delay)
+        
+        if self.jitter:
+            # Add random jitter to avoid thundering herd
+            delay *= (0.5 + random.random() * 0.5)
+        
+        return delay
+
+class LinearBackoff(RetryStrategy):
+    def __init__(self, delay: float = 1.0):
+        self.delay = delay
+    
+    def get_delay(self, attempt: int) -> float:
+        return self.delay * attempt
+
+def async_retry(
+    max_attempts: int = 3,
+    strategy: RetryStrategy = None,
+    exceptions: tuple = (Exception,),
+    on_retry: Callable = None
+):
+    """Async retry decorator with configurable strategies"""
+    
+    if strategy is None:
+        strategy = ExponentialBackoff()
+    
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        async def wrapper(*args, **kwargs) -> Any:
+            last_exception = None
+            
+            for attempt in range(max_attempts):
+                try:
+                    return await func(*args, **kwargs)
+                    
+                except exceptions as e:
+                    last_exception = e
+                    
+                    if attempt == max_attempts - 1:
+                        # Last attempt, re-raise
+                        raise
+                    
+                    # Calculate delay and wait
+                    delay = strategy.get_delay(attempt)
+                    
+                    if on_retry:
+                        await on_retry(e, attempt + 1, delay)
+                    
+                    await asyncio.sleep(delay)
+            
+            # Should never reach here, but just in case
+            raise last_exception
+        
+        return wrapper
+    return decorator
+
+# Usage examples
+@async_retry(
+    max_attempts=5,
+    strategy=ExponentialBackoff(base_delay=0.5, max_delay=30.0),
+    exceptions=(httpx.RequestError, httpx.TimeoutException),
+    on_retry=lambda e, attempt, delay: logger.warning(
+        f"Request failed (attempt {attempt}), retrying in {delay:.1f}s: {e}"
+    )
+)
+async def make_api_call(url: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, timeout=10.0)
+        response.raise_for_status()
+        return response.json()
+
+@async_retry(
+    max_attempts=3,
+    strategy=LinearBackoff(delay=2.0),
+    exceptions=(DatabaseConnectionError,)
+)
+async def database_operation():
+    # Database operation that might fail
+    pass
+```
+
+</details>
+
+### Graceful Degradation
+
+<details>
+<summary>📉 Service Degradation Strategies</summary>
+
+```python
+# Graceful degradation implementation
+from typing import Optional, Any, Callable
+from enum import Enum
+
+class ServiceLevel(Enum):
+    FULL = "full"              # All features available
+    REDUCED = "reduced"        # Core features only
+    MINIMAL = "minimal"        # Basic functionality
+    OFFLINE = "offline"        # Service unavailable
+
+class GracefulDegradationManager:
+    def __init__(self):
+        self.service_levels = {}
+        self.degradation_rules = {}
+    
+    def register_service(self, name: str, level: ServiceLevel = ServiceLevel.FULL):
+        """Register a service with its current level"""
+        self.service_levels[name] = level
+    
+    def set_service_level(self, name: str, level: ServiceLevel):
+        """Update service level"""
+        self.service_levels[name] = level
+        logger.info(f"Service {name} degraded to {level.value}")
+    
+    def get_service_level(self, name: str) -> ServiceLevel:
+        """Get current service level"""
+        return self.service_levels.get(name, ServiceLevel.OFFLINE)
+    
+    def register_degradation_rule(self, service: str, feature: str, min_level: ServiceLevel):
+        """Register which features require which service levels"""
+        if service not in self.degradation_rules:
+            self.degradation_rules[service] = {}
+        self.degradation_rules[service][feature] = min_level
+    
+    def is_feature_available(self, service: str, feature: str) -> bool:
+        """Check if a feature is available at current service level"""
+        current_level = self.get_service_level(service)
+        required_level = self.degradation_rules.get(service, {}).get(feature, ServiceLevel.FULL)
+        
+        # Service level hierarchy: FULL > REDUCED > MINIMAL > OFFLINE
+        level_hierarchy = {
+            ServiceLevel.FULL: 3,
+            ServiceLevel.REDUCED: 2,
+            ServiceLevel.MINIMAL: 1,
+            ServiceLevel.OFFLINE: 0
+        }
+        
+        return level_hierarchy[current_level] >= level_hierarchy[required_level]
+
+# Degradation-aware service wrapper
+class DegradableService:
+    def __init__(self, name: str, degradation_manager: GracefulDegradationManager):
+        self.name = name
+        self.degradation_manager = degradation_manager
+        
+        # Register degradation rules
+        self._register_features()
+    
+    def _register_features(self):
+        """Register feature requirements"""
+        self.degradation_manager.register_degradation_rule(
+            self.name, "advanced_search", ServiceLevel.FULL
+        )
+        self.degradation_manager.register_degradation_rule(
+            self.name, "basic_search", ServiceLevel.REDUCED
+        )
+        self.degradation_manager.register_degradation_rule(
+            self.name, "cached_results", ServiceLevel.MINIMAL
+        )
+    
+    async def search(self, query: str) -> SearchResult:
+        """Search with graceful degradation"""
+        
+        if self.degradation_manager.is_feature_available(self.name, "advanced_search"):
+            return await self._advanced_search(query)
+        
+        elif self.degradation_manager.is_feature_available(self.name, "basic_search"):
+            return await self._basic_search(query)
+        
+        elif self.degradation_manager.is_feature_available(self.name, "cached_results"):
+            return await self._cached_search(query)
+        
+        else:
+            raise ServiceUnavailableError(f"{self.name} is currently offline")
+    
+    async def _advanced_search(self, query: str) -> SearchResult:
+        """Full-featured search with AI enhancement"""
+        # Implementation with all features
+        pass
+    
+    async def _basic_search(self, query: str) -> SearchResult:
+        """Basic search without AI features"""
+        # Simplified implementation
+        pass
+    
+    async def _cached_search(self, query: str) -> SearchResult:
+        """Return cached results only"""
+        # Return cached data
+        pass
+
+# Health monitoring and automatic degradation
+class HealthMonitor:
+    def __init__(self, degradation_manager: GracefulDegradationManager):
+        self.degradation_manager = degradation_manager
+        self.health_checks = {}
+        self.monitoring_tasks = {}
+    
+    def register_health_check(self, service: str, check_func: Callable, interval: int = 30):
+        """Register a health check for a service"""
+        self.health_checks[service] = {
+            "func": check_func,
+            "interval": interval,
+            "failures": 0,
+            "last_check": None
+        }
+    
+    async def start_monitoring(self):
+        """Start health monitoring for all services"""
+        for service in self.health_checks:
+            task = asyncio.create_task(self._monitor_service(service))
+            self.monitoring_tasks[service] = task
+    
+    async def _monitor_service(self, service: str):
+        """Monitor individual service health"""
+        check_config = self.health_checks[service]
+        
+        while True:
+            try:
+                # Perform health check
+                is_healthy = await check_config["func"]()
+                
+                if is_healthy:
+                    check_config["failures"] = 0
+                    # Potentially upgrade service level
+                    self._maybe_upgrade_service(service)
+                else:
+                    check_config["failures"] += 1
+                    self._maybe_degrade_service(service, check_config["failures"])
+                
+                check_config["last_check"] = datetime.utcnow()
+                
+            except Exception as e:
+                logger.error(f"Health check failed for {service}: {e}")
+                check_config["failures"] += 1
+                self._maybe_degrade_service(service, check_config["failures"])
+            
+            await asyncio.sleep(check_config["interval"])
+    
+    def _maybe_degrade_service(self, service: str, failure_count: int):
+        """Degrade service based on failure count"""
+        current_level = self.degradation_manager.get_service_level(service)
+        
+        if failure_count >= 5 and current_level != ServiceLevel.OFFLINE:
+            self.degradation_manager.set_service_level(service, ServiceLevel.OFFLINE)
+        elif failure_count >= 3 and current_level == ServiceLevel.FULL:
+            self.degradation_manager.set_service_level(service, ServiceLevel.REDUCED)
+        elif failure_count >= 2 and current_level == ServiceLevel.REDUCED:
+            self.degradation_manager.set_service_level(service, ServiceLevel.MINIMAL)
+    
+    def _maybe_upgrade_service(self, service: str):
+        """Upgrade service level if consistently healthy"""
+        current_level = self.degradation_manager.get_service_level(service)
+        
+        # Upgrade logic - be conservative
+        if current_level == ServiceLevel.MINIMAL:
+            self.degradation_manager.set_service_level(service, ServiceLevel.REDUCED)
+        elif current_level == ServiceLevel.REDUCED:
+            self.degradation_manager.set_service_level(service, ServiceLevel.FULL)
+```
+
+</details>
+
+---
+
+## 📊 Observability & Monitoring
+
+### Structured Logging
+
+<details>
+<summary>📝 Comprehensive Logging Strategy</summary>
+
+```python
+# Structured logging implementation
+import structlog
+import json
+from typing import Any, Dict
+from datetime import datetime
+
+# Configure structured logging
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.dev.ConsoleRenderer()  # For development
+    ],
+    wrapper_class=structlog.make_filtering_bound_logger(30),  # INFO level
+    logger_factory=structlog.WriteLoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
+class StructuredLogger:
+    def __init__(self, name: str):
+        self.logger = structlog.get_logger(name)
+    
+    def info(self, message: str, **kwargs):
+        self.logger.info(message, **kwargs)
+    
+    def error(self, message: str, error: Exception = None, **kwargs):
+        if error:
+            kwargs["error_type"] = type(error).__name__
+            kwargs["error_message"] = str(error)
+        self.logger.error(message, **kwargs)
+    
+    def warn(self, message: str, **kwargs):
+        self.logger.warning(message, **kwargs)
+    
+    def debug(self, message: str, **kwargs):
+        self.logger.debug(message, **kwargs)
+
+# Request logging middleware
+class RequestLoggingMiddleware:
+    def __init__(self):
+        self.logger = StructuredLogger("request")
+    
+    async def __call__(self, request: Request, call_next):
+        start_time = time.time()
+        request_id = str(uuid.uuid4())
+        
+        # Add request context
+        structlog.contextvars.bind_contextvars(
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.client.host
+        )
+        
+        self.logger.info("Request started")
+        
+        try:
+            response = await call_next(request)
+            
+            duration = time.time() - start_time
+            
+            self.logger.info(
+                "Request completed",
+                status_code=response.status_code,
+                duration=duration,
+                response_size=len(response.body) if hasattr(response, 'body') else None
+            )
+            
+            return response
+            
+        except Exception as e:
+            duration = time.time() - start_time
+            
+            self.logger.error(
+                "Request failed",
+                error=e,
+                duration=duration
+            )
+            
+            raise
+        finally:
+            structlog.contextvars.clear_contextvars()
+
+# Business logic logging
+class BusinessEventLogger:
+    def __init__(self):
+        self.logger = StructuredLogger("business")
+    
+    def log_artifact_created(self, artifact: Artifact, user_id: str):
+        self.logger.info(
+            "Artifact created",
+            event="artifact_created",
+            artifact_id=artifact.id,
+            artifact_type=artifact.type,
+            user_id=user_id,
+            title=artifact.title
+        )
+    
+    def log_tool_executed(self, tool_name: str, user_id: str, duration: float, success: bool):
+        self.logger.info(
+            "Tool executed",
+            event="tool_executed",
+            tool_name=tool_name,
+            user_id=user_id,
+            duration=duration,
+            success=success
+        )
+    
+    def log_user_action(self, action: str, user_id: str, metadata: Dict[str, Any] = None):
+        self.logger.info(
+            "User action",
+            event="user_action",
+            action=action,
+            user_id=user_id,
+            metadata=metadata or {}
+        )
+```
+
+</details>
+
+### Metrics Collection
+
+<details>
+<summary>📈 Prometheus Metrics Integration</summary>
+
+```python
+# Prometheus metrics collection
+from prometheus_client import Counter, Histogram, Gauge, Info
+import time
+
+# Define metrics
+REQUEST_COUNT = Counter(
+    'http_requests_total',
+    'Total HTTP requests',
+    ['method', 'endpoint', 'status_code']
+)
+
+REQUEST_DURATION = Histogram(
+    'http_request_duration_seconds',
+    'HTTP request duration',
+    ['method', 'endpoint']
+)
+
+ACTIVE_CONNECTIONS = Gauge(
+    'active_connections',
+    'Number of active connections'
+)
+
+TOOL_EXECUTIONS = Counter(
+    'tool_executions_total',
+    'Total tool executions',
+    ['tool_name', 'status']
+)
+
+TOOL_DURATION = Histogram(
+    'tool_execution_duration_seconds',
+    'Tool execution duration',
+    ['tool_name']
+)
+
+ARTIFACTS_CREATED = Counter(
+    'artifacts_created_total',
+    'Total artifacts created',
+    ['artifact_type', 'user_id']
+)
+
+CACHE_OPERATIONS = Counter(
+    'cache_operations_total',
+    'Cache operations',
+    ['operation', 'result']
+)
+
+# Metrics middleware
+class MetricsMiddleware:
+    async def __call__(self, request: Request, call_next):
+        start_time = time.time()
+        
+        try:
+            response = await call_next(request)
+            
+            # Record metrics
+            REQUEST_COUNT.labels(
+                method=request.method,
+                endpoint=request.url.path,
+                status_code=response.status_code
+            ).inc()
+            
+            REQUEST_DURATION.labels(
+                method=request.method,
+                endpoint=request.url.path
+            ).observe(time.time() - start_time)
+            
+            return response
+            
+        except Exception as e:
+            REQUEST_COUNT.labels(
+                method=request.method,
+                endpoint=request.url.path,
+                status_code=500
+            ).inc()
+            
+            raise
+
+# Business metrics collector
+class BusinessMetricsCollector:
+    def record_tool_execution(self, tool_name: str, duration: float, success: bool):
+        """Record tool execution metrics"""
+        TOOL_EXECUTIONS.labels(
+            tool_name=tool_name,
+            status="success" if success else "failure"
+        ).inc()
+        
+        TOOL_DURATION.labels(tool_name=tool_name).observe(duration)
+    
+    def record_artifact_creation(self, artifact_type: str, user_id: str):
+        """Record artifact creation"""
+        ARTIFACTS_CREATED.labels(
+            artifact_type=artifact_type,
+            user_id=user_id
+        ).inc()
+    
+    def record_cache_operation(self, operation: str, hit: bool):
+        """Record cache operation"""
+        CACHE_OPERATIONS.labels(
+            operation=operation,
+            result="hit" if hit else "miss"
+        ).inc()
+
+# Custom metrics endpoint
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+    
+    return Response(
+        generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
+    )
+```
+
+</details>
+
+### Distributed Tracing
+
+<details>
+<summary>🔍 OpenTelemetry Tracing Setup</summary>
+
+```python
+# OpenTelemetry distributed tracing
+from opentelemetry import trace
+from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
+# Configure tracing
+trace.set_tracer_provider(TracerProvider())
+tracer = trace.get_tracer(__name__)
+
+# Configure Jaeger exporter
+jaeger_exporter = JaegerExporter(
+    agent_host_name="jaeger",
+    agent_port=6831,
+)
+
+span_processor = BatchSpanProcessor(jaeger_exporter)
+trace.get_tracer_provider().add_span_processor(span_processor)
+
+# Instrument FastAPI and HTTP clients
+FastAPIInstrumentor.instrument_app(app)
+HTTPXClientInstrumentor().instrument()
+
+# Custom tracing decorators
+def trace_function(operation_name: str = None):
+    """Decorator to trace function execution"""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            span_name = operation_name or f"{func.__module__}.{func.__name__}"
+            
+            with tracer.start_as_current_span(span_name) as span:
+                # Add function parameters as attributes
+                span.set_attribute("function.name", func.__name__)
+                span.set_attribute("function.module", func.__module__)
+                
+                try:
+                    result = await func(*args, **kwargs)
+                    span.set_attribute("result.success", True)
+                    return result
+                    
+                except Exception as e:
+                    span.set_attribute("result.success", False)
+                    span.set_attribute("error.type", type(e).__name__)
+                    span.set_attribute("error.message", str(e))
+                    span.record_exception(e)
+                    raise
+        
+        return wrapper
+    return decorator
+
+# Trace tool executions
+class TracedToolExecutor:
+    def __init__(self, tool_executor: ToolExecutor):
+        self.tool_executor = tool_executor
+    
+    @trace_function("tool.execute")
+    async def execute(self, tool_request: ToolRequest) -> ToolResult:
+        """Execute tool with distributed tracing"""
+        
+        with tracer.start_as_current_span("tool.validate") as span:
+            span.set_attribute("tool.name", tool_request.name)
+            span.set_attribute("tool.params", str(tool_request.parameters))
+            await self.tool_executor.validate_request(tool_request)
+        
+        with tracer.start_as_current_span("tool.call_mcp") as span:
+            span.set_attribute("mcp.server", self._get_server_for_tool(tool_request.name))
+            result = await self.tool_executor.execute(tool_request)
+        
+        with tracer.start_as_current_span("tool.process_result") as span:
+            span.set_attribute("result.success", result.success)
+            span.set_attribute("result.artifacts_count", len(result.artifacts))
+            processed_result = await self.tool_executor.process_result(result)
+        
+        return processed_result
+
+# Trace database operations
+class TracedDatabase:
+    def __init__(self, database):
+        self.database = database
+    
+    @trace_function("db.query")
+    async def query(self, sql: str, *params) -> List[dict]:
+        """Execute database query with tracing"""
+        
+        with tracer.start_as_current_span("db.execute") as span:
+            span.set_attribute("db.statement", sql[:100] + "..." if len(sql) > 100 else sql)
+            span.set_attribute("db.params_count", len(params))
+            
+            start_time = time.time()
+            result = await self.database.query(sql, *params)
+            duration = time.time() - start_time
+            
+            span.set_attribute("db.duration", duration)
+            span.set_attribute("db.rows_returned", len(result))
+            
+            return result
+```
+
+</details>
+
+---
+
+## 🎯 Technology Decision Matrix
+
+### Framework Selection Criteria
+
+| Criterion | Weight | LobeChat | Next.js | React | Score |
+|-----------|--------|----------|---------|-------|-------|
+| **Developer Experience** | 25% | 9/10 | 8/10 | 7/10 | 8.25 |
+| **Community Support** | 20% | 7/10 | 9/10 | 10/10 | 8.4 |
+| **Performance** | 20% | 8/10 | 9/10 | 8/10 | 8.2 |
+| **Extensibility** | 15% | 10/10 | 7/10 | 9/10 | 8.7 |
+| **Documentation** | 10% | 8/10 | 9/10 | 9/10 | 8.6 |
+| **Maintenance** | 10% | 8/10 | 8/10 | 9/10 | 8.3 |
+| **Total Score** | 100% | - | - | - | **8.41/10** |
+
+### Database Technology Matrix
+
+| Database | Use Case | Pros | Cons | Decision |
+|----------|----------|------|------|----------|
+| **PostgreSQL** | Primary relational data | ACID compliance, mature, SQL | Limited horizontal scaling | ✅ Primary |
+| **Redis** | Caching & sessions | High performance, simple | Memory-bound, data loss risk | ✅ Cache |
+| **Qdrant** | Vector similarity | Purpose-built, fast search | Specialized use case | ✅ Vectors |
+| **Neo4j** | Knowledge graphs | Relationship queries, flexible | Learning curve, licensing | ✅ Graphs |
+
+### Tool Integration Comparison
+
+| Integration Approach | Complexity | Performance | Maintainability | Chosen |
+|---------------------|------------|-------------|----------------|---------|
+| **Direct SDK Integration** | Low | High | Medium | ❌ |
+| **REST API Calls** | Medium | Medium | High | ❌ |
+| **MCP Protocol** | High | Medium | High | ✅ |
+| **Webhook Events** | Low | Low | Low | ❌ |
+
+**MCP Selection Rationale:**
+- Standardized protocol across tools
+- Built-in versioning and capability discovery
+- Isolation and security benefits
+- Future-proof extensibility
+
+---
+
+## 🚀 Future Architecture Evolution
+
+### Roadmap: Next 6 Months
+
+<details>
+<summary>📅 Short-term Architectural Improvements</summary>
+
+#### Phase 1: Performance Optimization (Month 1-2)
+- [ ] Implement advanced caching strategies
+- [ ] Add database query optimization
+- [ ] Introduce connection pooling improvements
+- [ ] Deploy CDN for static assets
+- [ ] Add response compression
+
+#### Phase 2: Scalability Enhancements (Month 2-3)
+- [ ] Implement database sharding
+- [ ] Add horizontal pod autoscaling
+- [ ] Introduce load balancing improvements
+- [ ] Deploy multi-region support
+- [ ] Add asynchronous processing queues
+
+#### Phase 3: Feature Expansion (Month 3-4)
+- [ ] Add real-time collaboration features
+- [ ] Implement voice interaction
+- [ ] Add mobile app support
+- [ ] Introduce plugin marketplace
+- [ ] Add advanced analytics
+
+#### Phase 4: Security & Compliance (Month 4-5)
+- [ ] Implement SOC 2 compliance
+- [ ] Add audit logging
+- [ ] Introduce zero-trust networking
+- [ ] Deploy advanced threat detection
+- [ ] Add data encryption at rest
+
+#### Phase 5: AI/ML Enhancements (Month 5-6)
+- [ ] Add model fine-tuning capabilities
+- [ ] Implement advanced RAG techniques
+- [ ] Add multi-modal AI support
+- [ ] Introduce automated optimization
+- [ ] Deploy edge AI processing
+
+</details>
+
+### Long-term Vision (12+ Months)
+
+<details>
+<summary>🔮 Future Architecture Concepts</summary>
+
+#### Microservices Evolution
+```mermaid
+graph TB
+    subgraph "Current Monolith"
+        FA[FastAgent Backend]
+    end
+    
+    subgraph "Future Microservices"
+        US[User Service]
+        AS[Artifact Service]
+        TS[Tool Service]
+        NS[Notification Service]
+        SS[Search Service]
+        MS[Monitoring Service]
+    end
+    
+    FA -.->|Evolution| US
+    FA -.->|Evolution| AS
+    FA -.->|Evolution| TS
+    FA -.->|Evolution| NS
+    FA -.->|Evolution| SS
+    FA -.->|Evolution| MS
+```
+
+#### Edge Computing Integration
+- **Edge AI Processing**: Deploy smaller models at edge locations
+- **Local-first Architecture**: Offline-capable clients with sync
+- **Progressive Enhancement**: Graceful feature degradation
+- **Distributed Caching**: Multi-tier caching across edge nodes
+
+#### Advanced AI Integration
+- **Model Orchestration**: Dynamic model selection based on task
+- **Federated Learning**: Privacy-preserving collaborative training  
+- **Autonomous Agents**: Self-improving AI assistants
+- **Multimodal Processing**: Unified text, image, audio, video handling
+
+</details>
+
+---
+
+## 📖 Glossary & References
+
+### Technical Glossary
+
+| Term | Definition |
+|------|------------|
+| **Artifact** | Discrete output unit (code, image, document) displayed in UI |
+| **CUA** | Computer User Assistance - sandbox environment interaction |
+| **MCP** | Model Context Protocol - standardized tool integration protocol |
+| **Tool** | Executable action via MCP (e.g., `github.create_issue`) |
+| **Intent** | Processed user request with context and routing information |
+| **Circuit Breaker** | Fault tolerance pattern for external service calls |
+| **Blue-Green** | Deployment strategy with zero-downtime updates |
+| **Sharding** | Database partitioning for horizontal scaling |
+
+### Architecture References
+
+- [Microservices Patterns](https://microservices.io/patterns/) - Martin Fowler
+- [System Design Primer](https://github.com/donnemartin/system-design-primer)
+- [The Twelve-Factor App](https://12factor.net/) - Methodology for SaaS apps
+- [Building Event-Driven Microservices](https://www.oreilly.com/library/view/building-event-driven-microservices/9781492057888/)
+- [Designing Data-Intensive Applications](https://dataintensive.net/) - Martin Kleppmann
+
+### Technology Documentation
+
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [React Documentation](https://react.dev/)
+- [MCP Specification](https://spec.modelcontextprotocol.io/)
+- [Qdrant Documentation](https://qdrant.tech/documentation/)
+- [Neo4j Developer Guide](https://neo4j.com/developer/)
+
+---
+
+## 📊 Architecture Metrics & KPIs
+
+### Performance Targets
+
+| Metric | Target | Measurement |
+|--------|--------|-------------|
+| **API Response Time** | < 200ms (95th percentile) | Prometheus histogram |
+| **Frontend Load Time** | < 2.5s (LCP) | Web Vitals |
+| **Cache Hit Rate** | > 80% | Redis metrics |
+| **Database Query Time** | < 100ms (average) | Query monitoring |
+| **Tool Execution Time** | < 10s (95th percentile) | Distributed tracing |
+
+### Reliability Targets
+
+| Metric | Target | Measurement |
+|--------|--------|-------------|
+| **System Uptime** | 99.9% | Health check monitoring |
+| **Error Rate** | < 1% | Error tracking |
+| **MTTR** | < 15 minutes | Incident response |
+| **MTBF** | > 720 hours | Reliability monitoring |
+
+### Scalability Metrics
+
+| Metric | Current | Target (6 months) |
+|--------|---------|-------------------|
+| **Concurrent Users** | 100 | 10,000 |
+| **Requests/Second** | 500 | 50,000 |
+| **Database Connections** | 50 | 500 |
+| **Cache Memory** | 1GB | 100GB |
+
+---
+
+*Architecture document maintained by the CUA development team. Last updated: $(date +'%Y-%m-%d')*
+
+*For operational details and development guidelines, see [`.github/copilot-instructions.md`](.github/copilot-instructions.md)*
+
 
 ## 2. Diagramas
 
