@@ -287,13 +287,24 @@ stateDiagram-v2
 - ☁️ GCP Account (for deployment)
 - 🔑 OpenAI API Key
 
-### One-Command Setup
+### One-Command Setup (Recommended)
 
 ```bash
-# Clone and setup everything
+# Clone and setup everything with security features
 git clone https://github.com/myselfgus/cua.git
 cd cua
-./scripts/setup.sh
+
+# Automated setup with security hooks and validation
+python scripts/setup_dev_env.py --install-hooks
+
+# Copy and configure environment
+cp .env.example .env
+# Edit .env with your configuration
+
+# Install dependencies and start
+cd frontend && npm install && cd ..
+cd backend && pip install -r requirements.txt && cd ..
+docker-compose up
 ```
 
 ### Manual Setup
@@ -325,6 +336,26 @@ cd cua
    curl http://localhost:8000/health
    # Should return: {"status": "healthy", "components": {...}}
    ```
+
+### 🔐 Security Features
+
+Project CUA includes comprehensive security automation:
+
+- **🕵️ Secret Detection**: Automatic scanning and fixing of hardcoded secrets
+- **🎯 Project Validation**: CI/CD workflows only run when project is ready
+- **🔒 Pre-commit Hooks**: Prevent secret commits before they happen
+- **📊 Readiness Reports**: Detailed project state validation
+
+```bash
+# Scan for secrets manually
+python scripts/secret_scanner.py
+
+# Auto-fix detected secrets  
+python scripts/secret_scanner.py --fix
+
+# Check project readiness
+python scripts/setup_dev_env.py --validate-only
+```
 
 </details>
 
@@ -1840,6 +1871,7 @@ Any other context or screenshots.
 |----------|---------|----------|
 | **📖 README.md** | Project overview and quick start | All users |
 | **🏗️ ARCHITECTURE.md** | Technical architecture details | Developers, architects |
+| **🔐 SECURITY.md** | Security features and best practices | Developers, security engineers |
 | **🚀 DEPLOYMENT.md** | Production deployment guide | DevOps, SRE |
 | **🔧 DEVELOPMENT.md** | Development environment setup | Developers |
 | **🔌 API.md** | API documentation and examples | Frontend developers, integrators |
@@ -1851,6 +1883,7 @@ Any other context or screenshots.
 #### For Developers
 - [🔧 Development Setup](#-development-setup)
 - [🏗️ System Architecture](#️-system-architecture)
+- [🔐 Security Guide](docs/SECURITY.md)
 - [📦 Dependencies & Requirements](#-dependencies--requirements)
 - [🧪 Testing Strategy](#-testing-strategy)
 

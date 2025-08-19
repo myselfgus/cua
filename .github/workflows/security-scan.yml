@@ -1,0 +1,326 @@
+name: 🔐 Security & Secret Detection
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  secret-detection:
+    name: 🕵️ Secret Detection & Auto-Fix
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔍 Scan for secrets with Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+      - name: 🔧 Setup Python for secret auto-fix
+        if: failure()
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 🛠️ Auto-fix detected secrets
+        if: failure()
+        run: |
+          cat > auto_fix_secrets.py << 'EOF'
+          #!/usr/bin/env python3
+          """
+          Automatically detect and fix common secret patterns in code.
+          Replaces hardcoded secrets with environment variable references.
+          """
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+          from typing import Dict, List, Tuple
+
+          # Common secret patterns to detect and fix
+          SECRET_PATTERNS = {
+              'openai_api_key': {
+                  'pattern': r'(openai[_-]?api[_-]?key\s*[=:]\s*["\']?)([a-zA-Z0-9-]{20,})["\']?',
+                  'replacement': r'\1${{ secrets.OPENAI_API_KEY }}',
+                  'env_var': 'OPENAI_API_KEY'
+              },
+              'github_token': {
+                  'pattern': r'(github[_-]?token\s*[=:]\s*["\']?)([a-zA-Z0-9_]{40})["\']?',
+                  'replacement': r'\1${{ secrets.GITHUB_TOKEN }}',
+                  'env_var': 'GITHUB_TOKEN'
+              },
+              'aws_access_key': {
+                  'pattern': r'(aws[_-]?access[_-]?key[_-]?id\s*[=:]\s*["\']?)([A-Z0-9]{20})["\']?',
+                  'replacement': r'\1${{ secrets.AWS_ACCESS_KEY_ID }}',
+                  'env_var': 'AWS_ACCESS_KEY_ID'
+              },
+              'aws_secret_key': {
+                  'pattern': r'(aws[_-]?secret[_-]?access[_-]?key\s*[=:]\s*["\']?)([A-Za-z0-9/+=]{40})["\']?',
+                  'replacement': r'\1${{ secrets.AWS_SECRET_ACCESS_KEY }}',
+                  'env_var': 'AWS_SECRET_ACCESS_KEY'
+              },
+              'database_url': {
+                  'pattern': r'(database[_-]?url\s*[=:]\s*["\']?)(postgresql://[^"\'\\s]+)["\']?',
+                  'replacement': r'\1${{ secrets.DATABASE_URL }}',
+                  'env_var': 'DATABASE_URL'
+              },
+              'redis_url': {
+                  'pattern': r'(redis[_-]?url\s*[=:]\s*["\']?)(redis://[^"\'\\s]+)["\']?',
+                  'replacement': r'\1${{ secrets.REDIS_URL }}',
+                  'env_var': 'REDIS_URL'
+              },
+              'api_key_generic': {
+                  'pattern': r'(api[_-]?key\s*[=:]\s*["\']?)([a-zA-Z0-9]{32,})["\']?',
+                  'replacement': r'\1${{ secrets.API_KEY }}',
+                  'env_var': 'API_KEY'
+              }
+          }
+
+          def scan_file_for_secrets(file_path: Path) -> List[Tuple[str, Dict]]:
+              """Scan a file for secret patterns."""
+              try:
+                  with open(file_path, 'r', encoding='utf-8') as f:
+                      content = f.read()
+              except UnicodeDecodeError:
+                  return []  # Skip binary files
+              
+              findings = []
+              for secret_type, config in SECRET_PATTERNS.items():
+                  matches = re.finditer(config['pattern'], content, re.IGNORECASE)
+                  for match in matches:
+                      findings.append((secret_type, {
+                          'match': match,
+                          'config': config,
+                          'line_num': content[:match.start()].count('\n') + 1
+                      }))
+              
+              return findings
+
+          def fix_secrets_in_file(file_path: Path, findings: List[Tuple[str, Dict]]) -> bool:
+              """Fix secrets in a file by replacing with environment variables."""
+              try:
+                  with open(file_path, 'r', encoding='utf-8') as f:
+                      content = f.read()
+              except UnicodeDecodeError:
+                  return False
+              
+              original_content = content
+              fixed_any = False
+              
+              # Sort findings by position (reverse order to avoid position shifts)
+              findings.sort(key=lambda x: x[1]['match'].start(), reverse=True)
+              
+              for secret_type, finding in findings:
+                  match = finding['match']
+                  config = finding['config']
+                  
+                  # Replace the secret with environment variable reference
+                  content = content[:match.start()] + \
+                           re.sub(config['pattern'], config['replacement'], match.group()) + \
+                           content[match.end():]
+                  fixed_any = True
+              
+              if fixed_any:
+                  with open(file_path, 'w', encoding='utf-8') as f:
+                      f.write(content)
+                  print(f"✅ Fixed secrets in {file_path}")
+              
+              return fixed_any
+
+          def create_env_template(env_vars: set) -> None:
+              """Create .env.example with detected environment variables."""
+              env_example_path = Path('.env.example')
+              
+              content = "# Environment Variables Template\n"
+              content += "# Copy this file to .env and fill in your actual values\n\n"
+              
+              for var in sorted(env_vars):
+                  content += f"{var}=your_{var.lower()}_here\n"
+              
+              with open(env_example_path, 'w') as f:
+                  f.write(content)
+              
+              print(f"📝 Created {env_example_path} with environment variables")
+
+          def main():
+              """Main function to scan and fix secrets."""
+              print("🔍 Scanning for secrets in repository...")
+              
+              # Files to scan (excluding common binary/generated files)
+              file_patterns = ['**/*.py', '**/*.js', '**/*.ts', '**/*.jsx', '**/*.tsx', 
+                             '**/*.yml', '**/*.yaml', '**/*.json', '**/*.env*', '**/*.conf', '**/*.config']
+              exclude_patterns = ['.git/', 'node_modules/', '__pycache__/', '.venv/', 'venv/', 
+                                'dist/', 'build/', '.next/', 'coverage/']
+              
+              files_to_scan = []
+              for pattern in file_patterns:
+                  for file_path in Path('.').glob(pattern):
+                      if file_path.is_file() and not any(exc in str(file_path) for exc in exclude_patterns):
+                          files_to_scan.append(file_path)
+              
+              total_findings = 0
+              fixed_files = 0
+              env_vars = set()
+              
+              for file_path in files_to_scan:
+                  findings = scan_file_for_secrets(file_path)
+                  if findings:
+                      print(f"🚨 Found {len(findings)} potential secrets in {file_path}")
+                      total_findings += len(findings)
+                      
+                      for secret_type, finding in findings:
+                          print(f"  - {secret_type} on line {finding['line_num']}")
+                          env_vars.add(finding['config']['env_var'])
+                      
+                      if fix_secrets_in_file(file_path, findings):
+                          fixed_files += 1
+              
+              if env_vars:
+                  create_env_template(env_vars)
+              
+              print(f"\n📊 Summary:")
+              print(f"  - Files scanned: {len(files_to_scan)}")
+              print(f"  - Secrets found: {total_findings}")
+              print(f"  - Files fixed: {fixed_files}")
+              print(f"  - Environment variables needed: {len(env_vars)}")
+              
+              if fixed_files > 0:
+                  print(f"\n⚠️  Files have been automatically modified to use environment variables.")
+                  print(f"   Please review the changes and update your .env file accordingly.")
+                  return 1  # Exit with error to stop workflow
+              
+              return 0
+
+          if __name__ == "__main__":
+              exit(main())
+          EOF
+
+          python auto_fix_secrets.py
+
+      - name: 📝 Commit auto-fixes
+        if: failure()
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "Secret Auto-Fix Bot"
+          
+          if git diff --quiet; then
+            echo "No changes to commit"
+          else
+            git add .
+            git commit -m "🔐 auto-fix: replace hardcoded secrets with environment variables
+
+            This commit was automatically generated by the secret detection workflow.
+            Hardcoded secrets have been replaced with GitHub secrets references.
+            
+            Please ensure the following secrets are configured in GitHub:
+            $(git diff HEAD~1 --name-only | xargs grep -l '\${{' || echo 'No secrets found')"
+            
+            echo "📝 Auto-fix committed. Please review the changes."
+          fi
+
+      - name: 🚫 Fail workflow if secrets were found
+        if: failure()
+        run: |
+          echo "🚨 Secrets were detected and automatically fixed."
+          echo "Please review the changes and ensure all secrets are properly configured."
+          exit 1
+
+  validate-environment:
+    name: 🔧 Validate Environment Configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔍 Check for environment configuration
+        run: |
+          cat > validate_env.py << 'EOF'
+          #!/usr/bin/env python3
+          """
+          Validate environment configuration and suggest improvements.
+          """
+          import os
+          import re
+          from pathlib import Path
+          from typing import List, Dict
+
+          def check_env_files() -> Dict[str, bool]:
+              """Check for environment configuration files."""
+              env_files = {
+                  '.env.example': Path('.env.example').exists(),
+                  '.env.local': Path('.env.local').exists(),
+                  '.env': Path('.env').exists(),
+                  'docker-compose.yml': Path('docker-compose.yml').exists(),
+              }
+              return env_files
+
+          def scan_for_env_vars() -> List[str]:
+              """Scan code for environment variable usage."""
+              env_vars = set()
+              
+              # Scan Python files
+              for py_file in Path('.').rglob('*.py'):
+                  try:
+                      with open(py_file, 'r') as f:
+                          content = f.read()
+                          # Look for os.getenv, os.environ patterns
+                          matches = re.findall(r'os\.(?:getenv|environ\.get)\(["\']([^"\']+)["\']', content)
+                          env_vars.update(matches)
+                  except:
+                      continue
+              
+              # Scan JS/TS files
+              for js_file in Path('.').rglob('*.{js,ts,jsx,tsx}'):
+                  try:
+                      with open(js_file, 'r') as f:
+                          content = f.read()
+                          # Look for process.env patterns
+                          matches = re.findall(r'process\.env\.([A-Z_]+)', content)
+                          env_vars.update(matches)
+                  except:
+                      continue
+              
+              return sorted(list(env_vars))
+
+          def main():
+              print("🔧 Validating environment configuration...")
+              
+              env_files = check_env_files()
+              env_vars = scan_for_env_vars()
+              
+              print(f"\n📁 Environment Files:")
+              for file, exists in env_files.items():
+                  status = "✅" if exists else "❌"
+                  print(f"  {status} {file}")
+              
+              print(f"\n🔧 Environment Variables Found ({len(env_vars)}):")
+              for var in env_vars:
+                  print(f"  - {var}")
+              
+              recommendations = []
+              
+              if not env_files['.env.example']:
+                  recommendations.append("Create .env.example file with all required environment variables")
+              
+              if env_vars and not any(env_files[key] for key in ['.env.example', '.env']):
+                  recommendations.append("Environment variables found but no .env files present")
+              
+              if recommendations:
+                  print(f"\n💡 Recommendations:")
+                  for i, rec in enumerate(recommendations, 1):
+                      print(f"  {i}. {rec}")
+              else:
+                  print(f"\n✅ Environment configuration looks good!")
+
+          if __name__ == "__main__":
+              main()
+          EOF
+
+          python validate_env.py

@@ -1,0 +1,533 @@
+name: 🎯 Project Readiness Validation
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  validate-project-readiness:
+    name: 🔍 Validate Project Development State
+    runs-on: ubuntu-latest
+    outputs:
+      frontend-ready: ${{ steps.readiness.outputs.frontend-ready }}
+      backend-ready: ${{ steps.readiness.outputs.backend-ready }}
+      integration-ready: ${{ steps.readiness.outputs.integration-ready }}
+      deployment-ready: ${{ steps.readiness.outputs.deployment-ready }}
+      skip-workflows: ${{ steps.readiness.outputs.skip-workflows }}
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Python for validation script
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 🎯 Validate project readiness
+        id: readiness
+        run: |
+          cat > project_readiness.py << 'EOF'
+          #!/usr/bin/env python3
+          """
+          Project Readiness Validation Script
+          
+          This script determines the current development state of the project
+          and decides which workflows should be enabled based on what's actually
+          implemented and testable.
+          """
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+          from typing import Dict, List, Tuple, Optional
+
+          class ProjectReadinessValidator:
+              def __init__(self):
+                  self.project_root = Path('.')
+                  self.readiness_scores = {}
+                  self.recommendations = []
+                  
+              def check_frontend_readiness(self) -> Tuple[bool, int, List[str]]:
+                  """Check if frontend is ready for CI/CD workflows."""
+                  issues = []
+                  score = 0
+                  
+                  # Check for package.json
+                  package_json = self.project_root / 'frontend' / 'package.json'
+                  if package_json.exists():
+                      score += 10
+                  else:
+                      issues.append("Missing frontend/package.json")
+                      return False, score, issues
+                  
+                  # Check for source files
+                  source_dirs = ['src', 'components', 'pages', 'app']
+                  has_source = False
+                  for src_dir in source_dirs:
+                      src_path = self.project_root / 'frontend' / src_dir
+                      if src_path.exists() and any(src_path.rglob('*.{tsx,ts,jsx,js}')):
+                          score += 20
+                          has_source = True
+                          break
+                  
+                  if not has_source:
+                      issues.append("No frontend source files found (*.tsx, *.ts, *.jsx, *.js)")
+                      score -= 20
+                  
+                  # Check for Next.js configuration
+                  next_config = self.project_root / 'frontend' / 'next.config.js'
+                  if next_config.exists() or (self.project_root / 'frontend' / 'next.config.mjs').exists():
+                      score += 15
+                  else:
+                      issues.append("Missing Next.js configuration")
+                  
+                  # Check for TypeScript config
+                  ts_config = self.project_root / 'frontend' / 'tsconfig.json'
+                  if ts_config.exists():
+                      score += 10
+                  
+                  # Check for test files
+                  test_files = list(self.project_root.rglob('frontend/**/*.test.{ts,tsx,js,jsx}')) + \
+                              list(self.project_root.rglob('frontend/**/*.spec.{ts,tsx,js,jsx}'))
+                  if test_files:
+                      score += 15
+                  else:
+                      issues.append("No test files found")
+                  
+                  # Check for essential files
+                  essential_files = ['tailwind.config.js', 'postcss.config.js', '.eslintrc.json']
+                  for file in essential_files:
+                      if (self.project_root / 'frontend' / file).exists():
+                          score += 5
+                  
+                  # Minimum score threshold for readiness
+                  is_ready = score >= 40 and has_source
+                  return is_ready, score, issues
+              
+              def check_backend_readiness(self) -> Tuple[bool, int, List[str]]:
+                  """Check if backend is ready for CI/CD workflows."""
+                  issues = []
+                  score = 0
+                  
+                  # Check for requirements.txt
+                  requirements = self.project_root / 'backend' / 'requirements.txt'
+                  if requirements.exists():
+                      score += 10
+                  else:
+                      issues.append("Missing backend/requirements.txt")
+                      return False, score, issues
+                  
+                  # Check for source files
+                  source_dirs = ['app', 'src', 'api', 'core']
+                  has_source = False
+                  for src_dir in source_dirs:
+                      src_path = self.project_root / 'backend' / src_dir
+                      if src_path.exists() and any(src_path.rglob('*.py')):
+                          score += 25
+                          has_source = True
+                          break
+                  
+                  if not has_source:
+                      issues.append("No backend source files found (*.py)")
+                      score -= 25
+                  
+                  # Check for main application file
+                  main_files = ['main.py', 'app.py', 'server.py', 'app/main.py']
+                  has_main = False
+                  for main_file in main_files:
+                      if (self.project_root / 'backend' / main_file).exists():
+                          score += 15
+                          has_main = True
+                          break
+                  
+                  if not has_main:
+                      issues.append("No main application file found")
+                  
+                  # Check for FastAPI imports in source files
+                  has_fastapi = False
+                  for py_file in self.project_root.rglob('backend/**/*.py'):
+                      try:
+                          with open(py_file, 'r') as f:
+                              content = f.read()
+                              if 'from fastapi' in content or 'import fastapi' in content:
+                                  score += 10
+                                  has_fastapi = True
+                                  break
+                      except:
+                          continue
+                  
+                  if not has_fastapi:
+                      issues.append("No FastAPI usage found in source files")
+                  
+                  # Check for test files
+                  test_files = list(self.project_root.rglob('backend/**/test_*.py')) + \
+                              list(self.project_root.rglob('backend/**/*_test.py'))
+                  if test_files:
+                      score += 15
+                  else:
+                      issues.append("No test files found")
+                  
+                  # Check for configuration files
+                  config_files = ['pyproject.toml', 'setup.py', '.env.example']
+                  for file in config_files:
+                      if (self.project_root / 'backend' / file).exists():
+                          score += 5
+                  
+                  # Minimum score threshold for readiness
+                  is_ready = score >= 45 and has_source and has_main
+                  return is_ready, score, issues
+              
+              def check_integration_readiness(self) -> Tuple[bool, int, List[str]]:
+                  """Check if project is ready for integration tests."""
+                  issues = []
+                  score = 0
+                  
+                  frontend_ready, _, _ = self.check_frontend_readiness()
+                  backend_ready, _, _ = self.check_backend_readiness()
+                  
+                  if not (frontend_ready and backend_ready):
+                      issues.append("Both frontend and backend must be ready for integration tests")
+                      return False, score, issues
+                  
+                  score += 30  # Base score for having both components
+                  
+                  # Check for docker-compose
+                  docker_compose = self.project_root / 'docker-compose.yml'
+                  if docker_compose.exists():
+                      score += 20
+                  else:
+                      issues.append("Missing docker-compose.yml for integration testing")
+                  
+                  # Check for test configuration
+                  test_compose = self.project_root / 'docker-compose.test.yml'
+                  if test_compose.exists():
+                      score += 15
+                  
+                  # Check for E2E test files
+                  e2e_dirs = ['tests/integration', 'tests/e2e', 'e2e']
+                  has_e2e = False
+                  for e2e_dir in e2e_dirs:
+                      e2e_path = self.project_root / e2e_dir
+                      if e2e_path.exists() and any(e2e_path.rglob('*.spec.{ts,js}')):
+                          score += 20
+                          has_e2e = True
+                          break
+                  
+                  if not has_e2e:
+                      issues.append("No E2E test files found")
+                  
+                  # Check for playwright configuration
+                  playwright_config = self.project_root / 'playwright.config.ts'
+                  if playwright_config.exists():
+                      score += 15
+                  
+                  is_ready = score >= 65
+                  return is_ready, score, issues
+              
+              def check_deployment_readiness(self) -> Tuple[bool, int, List[str]]:
+                  """Check if project is ready for deployment workflows."""
+                  issues = []
+                  score = 0
+                  
+                  # Must have integration readiness first
+                  integration_ready, _, _ = self.check_integration_readiness()
+                  if not integration_ready:
+                      issues.append("Integration tests must be ready before deployment")
+                      return False, score, issues
+                  
+                  score += 25  # Base score for integration readiness
+                  
+                  # Check for Dockerfiles
+                  frontend_dockerfile = self.project_root / 'frontend' / 'Dockerfile'
+                  backend_dockerfile = self.project_root / 'backend' / 'Dockerfile'
+                  
+                  if frontend_dockerfile.exists():
+                      score += 15
+                  else:
+                      issues.append("Missing frontend/Dockerfile")
+                  
+                  if backend_dockerfile.exists():
+                      score += 15
+                  else:
+                      issues.append("Missing backend/Dockerfile")
+                  
+                  # Check for production configuration
+                  prod_configs = [
+                      self.project_root / 'frontend' / '.env.production',
+                      self.project_root / 'backend' / '.env.production',
+                      self.project_root / 'docker-compose.prod.yml'
+                  ]
+                  
+                  for config in prod_configs:
+                      if config.exists():
+                          score += 10
+                  
+                  # Check for deployment scripts
+                  deploy_scripts = ['deploy.sh', 'scripts/deploy.sh', 'deploy.yml']
+                  for script in deploy_scripts:
+                      if (self.project_root / script).exists():
+                          score += 15
+                          break
+                  
+                  is_ready = score >= 70
+                  return is_ready, score, issues
+              
+              def generate_report(self) -> Dict:
+                  """Generate comprehensive readiness report."""
+                  print("🎯 Project Readiness Validation Report")
+                  print("=" * 50)
+                  
+                  frontend_ready, frontend_score, frontend_issues = self.check_frontend_readiness()
+                  backend_ready, backend_score, backend_issues = self.check_backend_readiness()
+                  integration_ready, integration_score, integration_issues = self.check_integration_readiness()
+                  deployment_ready, deployment_score, deployment_issues = self.check_deployment_readiness()
+                  
+                  components = {
+                      "Frontend": {
+                          "ready": frontend_ready,
+                          "score": frontend_score,
+                          "issues": frontend_issues,
+                          "emoji": "✅" if frontend_ready else "❌"
+                      },
+                      "Backend": {
+                          "ready": backend_ready,
+                          "score": backend_score,
+                          "issues": backend_issues,
+                          "emoji": "✅" if backend_ready else "❌"
+                      },
+                      "Integration": {
+                          "ready": integration_ready,
+                          "score": integration_score,
+                          "issues": integration_issues,
+                          "emoji": "✅" if integration_ready else "❌"
+                      },
+                      "Deployment": {
+                          "ready": deployment_ready,
+                          "score": deployment_score,
+                          "issues": deployment_issues,
+                          "emoji": "✅" if deployment_ready else "❌"
+                      }
+                  }
+                  
+                  # Print detailed report
+                  for component, data in components.items():
+                      print(f"\n{data['emoji']} {component} Readiness:")
+                      print(f"   Score: {data['score']}/100")
+                      print(f"   Status: {'Ready' if data['ready'] else 'Not Ready'}")
+                      
+                      if data['issues']:
+                          print(f"   Issues:")
+                          for issue in data['issues']:
+                              print(f"     • {issue}")
+                  
+                  # Determine which workflows should be skipped
+                  skip_workflows = not (frontend_ready or backend_ready)
+                  
+                  if skip_workflows:
+                      print(f"\n⚠️  Skipping CI/CD workflows - project not ready for automated testing")
+                      print(f"   Reason: Neither frontend nor backend have sufficient source code")
+                  else:
+                      print(f"\n✅ Project ready for basic CI/CD workflows")
+                  
+                  # Generate recommendations
+                  recommendations = []
+                  
+                  if not frontend_ready:
+                      recommendations.extend([
+                          "Add frontend source files (React/Next.js components)",
+                          "Create basic pages and components structure",
+                          "Add TypeScript configuration and basic tests"
+                      ])
+                  
+                  if not backend_ready:
+                      recommendations.extend([
+                          "Add backend source files (FastAPI application)",
+                          "Create main.py with FastAPI app instance",
+                          "Add basic API endpoints and tests"
+                      ])
+                  
+                  if not integration_ready and (frontend_ready or backend_ready):
+                      recommendations.extend([
+                          "Add docker-compose.yml for local development",
+                          "Create E2E tests with Playwright",
+                          "Set up integration test environment"
+                      ])
+                  
+                  if not deployment_ready and integration_ready:
+                      recommendations.extend([
+                          "Add Dockerfiles for frontend and backend",
+                          "Create production environment configurations",
+                          "Set up deployment scripts and pipelines"
+                      ])
+                  
+                  if recommendations:
+                      print(f"\n💡 Next Steps:")
+                      for i, rec in enumerate(recommendations[:5], 1):  # Show top 5
+                          print(f"   {i}. {rec}")
+                  
+                  return {
+                      "frontend_ready": frontend_ready,
+                      "backend_ready": backend_ready,
+                      "integration_ready": integration_ready,
+                      "deployment_ready": deployment_ready,
+                      "skip_workflows": skip_workflows,
+                      "scores": {
+                          "frontend": frontend_score,
+                          "backend": backend_score,
+                          "integration": integration_score,
+                          "deployment": deployment_score
+                      },
+                      "recommendations": recommendations
+                  }
+              
+              def set_github_outputs(self, report: Dict):
+                  """Set GitHub Actions outputs based on readiness report."""
+                  github_output = os.environ.get('GITHUB_OUTPUT')
+                  if github_output:
+                      with open(github_output, 'a') as f:
+                          f.write(f"frontend-ready={str(report['frontend_ready']).lower()}\n")
+                          f.write(f"backend-ready={str(report['backend_ready']).lower()}\n")
+                          f.write(f"integration-ready={str(report['integration_ready']).lower()}\n")
+                          f.write(f"deployment-ready={str(report['deployment_ready']).lower()}\n")
+                          f.write(f"skip-workflows={str(report['skip_workflows']).lower()}\n")
+                  
+                  # Also create a JSON report file
+                  with open('project-readiness-report.json', 'w') as f:
+                      json.dump(report, f, indent=2)
+
+          def main():
+              validator = ProjectReadinessValidator()
+              report = validator.generate_report()
+              validator.set_github_outputs(report)
+              
+              # Exit with non-zero if project is not ready for any workflows
+              if report['skip_workflows']:
+                  print(f"\n🚫 Project validation indicates workflows should be skipped")
+                  return 1
+              
+              return 0
+
+          if __name__ == "__main__":
+              exit(main())
+          EOF
+
+          python project_readiness.py
+
+      - name: 📊 Upload readiness report
+        uses: actions/upload-artifact@v3
+        with:
+          name: project-readiness-report
+          path: project-readiness-report.json
+          retention-days: 7
+
+      - name: 📝 Comment on PR with readiness status
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            
+            try {
+              const report = JSON.parse(fs.readFileSync('project-readiness-report.json', 'utf8'));
+              
+              let comment = `## 🎯 Project Readiness Report\n\n`;
+              
+              comment += `| Component | Status | Score | Ready |\n`;
+              comment += `|-----------|--------|-------|-------|\n`;
+              comment += `| Frontend | ${report.frontend_ready ? '✅' : '❌'} | ${report.scores.frontend}/100 | ${report.frontend_ready ? 'Yes' : 'No'} |\n`;
+              comment += `| Backend | ${report.backend_ready ? '✅' : '❌'} | ${report.scores.backend}/100 | ${report.backend_ready ? 'Yes' : 'No'} |\n`;
+              comment += `| Integration | ${report.integration_ready ? '✅' : '❌'} | ${report.scores.integration}/100 | ${report.integration_ready ? 'Yes' : 'No'} |\n`;
+              comment += `| Deployment | ${report.deployment_ready ? '✅' : '❌'} | ${report.scores.deployment}/100 | ${report.deployment_ready ? 'Yes' : 'No'} |\n\n`;
+              
+              if (report.skip_workflows) {
+                comment += `⚠️ **Workflows will be skipped** - project needs more development before CI/CD can run effectively.\n\n`;
+              } else {
+                comment += `✅ **Project ready** for CI/CD workflows!\n\n`;
+              }
+              
+              if (report.recommendations && report.recommendations.length > 0) {
+                comment += `### 💡 Recommendations:\n`;
+                report.recommendations.slice(0, 5).forEach((rec, i) => {
+                  comment += `${i + 1}. ${rec}\n`;
+                });
+              }
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            } catch (error) {
+              console.log('Could not create comment:', error);
+            }
+
+  # Conditional job that only runs if project is ready
+  validate-ready-components:
+    name: ✅ Validate Ready Components
+    runs-on: ubuntu-latest
+    needs: validate-project-readiness
+    if: needs.validate-project-readiness.outputs.skip-workflows == 'false'
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: ✅ Frontend validation
+        if: needs.validate-project-readiness.outputs.frontend-ready == 'true'
+        run: |
+          echo "🎨 Frontend is ready for CI/CD workflows"
+          echo "✅ Will run frontend tests, linting, and builds"
+      
+      - name: ✅ Backend validation  
+        if: needs.validate-project-readiness.outputs.backend-ready == 'true'
+        run: |
+          echo "🐍 Backend is ready for CI/CD workflows"
+          echo "✅ Will run backend tests, linting, and builds"
+      
+      - name: ✅ Integration validation
+        if: needs.validate-project-readiness.outputs.integration-ready == 'true'
+        run: |
+          echo "🔗 Integration tests are ready"
+          echo "✅ Will run E2E and integration test workflows"
+      
+      - name: ✅ Deployment validation
+        if: needs.validate-project-readiness.outputs.deployment-ready == 'true'
+        run: |
+          echo "🚀 Deployment is ready"
+          echo "✅ Will run deployment workflows"
+
+  # Job that provides guidance when workflows are skipped
+  provide-guidance:
+    name: 💡 Development Guidance
+    runs-on: ubuntu-latest
+    needs: validate-project-readiness
+    if: needs.validate-project-readiness.outputs.skip-workflows == 'true'
+    
+    steps:
+      - name: 💡 Provide next steps
+        run: |
+          echo "🎯 Project Development Status"
+          echo "=========================="
+          echo ""
+          echo "The project is in early development stage."
+          echo "CI/CD workflows are disabled until basic components are implemented."
+          echo ""
+          echo "📋 To enable CI/CD workflows, you need:"
+          echo ""
+          echo "Frontend Requirements:"
+          echo "  • Add React/Next.js source files in frontend/src/"
+          echo "  • Create basic components and pages"
+          echo "  • Add TypeScript configuration"
+          echo "  • Include basic tests"
+          echo ""
+          echo "Backend Requirements:"
+          echo "  • Add FastAPI source files in backend/app/"
+          echo "  • Create main.py with FastAPI app"
+          echo "  • Add API endpoints and routes"
+          echo "  • Include basic tests"
+          echo ""
+          echo "Once these are in place, the full CI/CD pipeline will activate!"
