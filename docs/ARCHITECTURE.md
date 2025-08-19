@@ -2672,9 +2672,950 @@ class PerformanceDashboard:
 
 ---
 
-## 📐 Design Patterns & Principles
+## 🚨 Error Handling & Resilience
 
-[Previous content for this section was already included above]
+### Circuit Breaker Pattern
+
+<details>
+<summary>🔧 Circuit Breaker Implementation</summary>
+
+```python
+# Circuit breaker for external service calls
+import asyncio
+from enum import Enum
+from typing import Callable, Any
+import time
+
+class CircuitState(Enum):
+    CLOSED = "closed"      # Normal operation
+    OPEN = "open"          # Failing, reject requests
+    HALF_OPEN = "half_open"  # Testing if service recovered
+
+class CircuitBreaker:
+    def __init__(
+        self,
+        failure_threshold: int = 5,
+        recovery_timeout: int = 60,
+        expected_exception: Exception = Exception
+    ):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.expected_exception = expected_exception
+        
+        self.failure_count = 0
+        self.last_failure_time = None
+        self.state = CircuitState.CLOSED
+    
+    async def call(self, func: Callable, *args, **kwargs) -> Any:
+        """Execute function with circuit breaker protection"""
+        
+        if self.state == CircuitState.OPEN:
+            if self._should_attempt_reset():
+                self.state = CircuitState.HALF_OPEN
+            else:
+                raise CircuitBreakerOpenError("Service unavailable")
+        
+        try:
+            result = await func(*args, **kwargs)
+            self._on_success()
+            return result
+            
+        except self.expected_exception as e:
+            self._on_failure()
+            raise
+    
+    def _should_attempt_reset(self) -> bool:
+        """Check if enough time has passed to attempt reset"""
+        return (
+            self.last_failure_time and
+            time.time() - self.last_failure_time >= self.recovery_timeout
+        )
+    
+    def _on_success(self):
+        """Handle successful call"""
+        self.failure_count = 0
+        self.state = CircuitState.CLOSED
+    
+    def _on_failure(self):
+        """Handle failed call"""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        
+        if self.failure_count >= self.failure_threshold:
+            self.state = CircuitState.OPEN
+
+# Usage in service classes
+class ExternalServiceClient:
+    def __init__(self):
+        self.circuit_breaker = CircuitBreaker(
+            failure_threshold=5,
+            recovery_timeout=60,
+            expected_exception=httpx.RequestError
+        )
+    
+    async def make_request(self, url: str) -> dict:
+        """Make HTTP request with circuit breaker protection"""
+        return await self.circuit_breaker.call(
+            self._http_request,
+            url
+        )
+    
+    async def _http_request(self, url: str) -> dict:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            return response.json()
+```
+
+</details>
+
+### Retry Mechanisms
+
+<details>
+<summary>🔄 Advanced Retry Strategies</summary>
+
+```python
+# Comprehensive retry mechanism
+import random
+import asyncio
+from typing import Callable, Any, List, Type
+from functools import wraps
+
+class RetryStrategy:
+    """Base class for retry strategies"""
+    def get_delay(self, attempt: int) -> float:
+        raise NotImplementedError
+
+class ExponentialBackoff(RetryStrategy):
+    def __init__(self, base_delay: float = 1.0, max_delay: float = 60.0, jitter: bool = True):
+        self.base_delay = base_delay
+        self.max_delay = max_delay
+        self.jitter = jitter
+    
+    def get_delay(self, attempt: int) -> float:
+        delay = min(self.base_delay * (2 ** attempt), self.max_delay)
+        
+        if self.jitter:
+            # Add random jitter to avoid thundering herd
+            delay *= (0.5 + random.random() * 0.5)
+        
+        return delay
+
+class LinearBackoff(RetryStrategy):
+    def __init__(self, delay: float = 1.0):
+        self.delay = delay
+    
+    def get_delay(self, attempt: int) -> float:
+        return self.delay * attempt
+
+def async_retry(
+    max_attempts: int = 3,
+    strategy: RetryStrategy = None,
+    exceptions: tuple = (Exception,),
+    on_retry: Callable = None
+):
+    """Async retry decorator with configurable strategies"""
+    
+    if strategy is None:
+        strategy = ExponentialBackoff()
+    
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        async def wrapper(*args, **kwargs) -> Any:
+            last_exception = None
+            
+            for attempt in range(max_attempts):
+                try:
+                    return await func(*args, **kwargs)
+                    
+                except exceptions as e:
+                    last_exception = e
+                    
+                    if attempt == max_attempts - 1:
+                        # Last attempt, re-raise
+                        raise
+                    
+                    # Calculate delay and wait
+                    delay = strategy.get_delay(attempt)
+                    
+                    if on_retry:
+                        await on_retry(e, attempt + 1, delay)
+                    
+                    await asyncio.sleep(delay)
+            
+            # Should never reach here, but just in case
+            raise last_exception
+        
+        return wrapper
+    return decorator
+
+# Usage examples
+@async_retry(
+    max_attempts=5,
+    strategy=ExponentialBackoff(base_delay=0.5, max_delay=30.0),
+    exceptions=(httpx.RequestError, httpx.TimeoutException),
+    on_retry=lambda e, attempt, delay: logger.warning(
+        f"Request failed (attempt {attempt}), retrying in {delay:.1f}s: {e}"
+    )
+)
+async def make_api_call(url: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, timeout=10.0)
+        response.raise_for_status()
+        return response.json()
+
+@async_retry(
+    max_attempts=3,
+    strategy=LinearBackoff(delay=2.0),
+    exceptions=(DatabaseConnectionError,)
+)
+async def database_operation():
+    # Database operation that might fail
+    pass
+```
+
+</details>
+
+### Graceful Degradation
+
+<details>
+<summary>📉 Service Degradation Strategies</summary>
+
+```python
+# Graceful degradation implementation
+from typing import Optional, Any, Callable
+from enum import Enum
+
+class ServiceLevel(Enum):
+    FULL = "full"              # All features available
+    REDUCED = "reduced"        # Core features only
+    MINIMAL = "minimal"        # Basic functionality
+    OFFLINE = "offline"        # Service unavailable
+
+class GracefulDegradationManager:
+    def __init__(self):
+        self.service_levels = {}
+        self.degradation_rules = {}
+    
+    def register_service(self, name: str, level: ServiceLevel = ServiceLevel.FULL):
+        """Register a service with its current level"""
+        self.service_levels[name] = level
+    
+    def set_service_level(self, name: str, level: ServiceLevel):
+        """Update service level"""
+        self.service_levels[name] = level
+        logger.info(f"Service {name} degraded to {level.value}")
+    
+    def get_service_level(self, name: str) -> ServiceLevel:
+        """Get current service level"""
+        return self.service_levels.get(name, ServiceLevel.OFFLINE)
+    
+    def register_degradation_rule(self, service: str, feature: str, min_level: ServiceLevel):
+        """Register which features require which service levels"""
+        if service not in self.degradation_rules:
+            self.degradation_rules[service] = {}
+        self.degradation_rules[service][feature] = min_level
+    
+    def is_feature_available(self, service: str, feature: str) -> bool:
+        """Check if a feature is available at current service level"""
+        current_level = self.get_service_level(service)
+        required_level = self.degradation_rules.get(service, {}).get(feature, ServiceLevel.FULL)
+        
+        # Service level hierarchy: FULL > REDUCED > MINIMAL > OFFLINE
+        level_hierarchy = {
+            ServiceLevel.FULL: 3,
+            ServiceLevel.REDUCED: 2,
+            ServiceLevel.MINIMAL: 1,
+            ServiceLevel.OFFLINE: 0
+        }
+        
+        return level_hierarchy[current_level] >= level_hierarchy[required_level]
+
+# Degradation-aware service wrapper
+class DegradableService:
+    def __init__(self, name: str, degradation_manager: GracefulDegradationManager):
+        self.name = name
+        self.degradation_manager = degradation_manager
+        
+        # Register degradation rules
+        self._register_features()
+    
+    def _register_features(self):
+        """Register feature requirements"""
+        self.degradation_manager.register_degradation_rule(
+            self.name, "advanced_search", ServiceLevel.FULL
+        )
+        self.degradation_manager.register_degradation_rule(
+            self.name, "basic_search", ServiceLevel.REDUCED
+        )
+        self.degradation_manager.register_degradation_rule(
+            self.name, "cached_results", ServiceLevel.MINIMAL
+        )
+    
+    async def search(self, query: str) -> SearchResult:
+        """Search with graceful degradation"""
+        
+        if self.degradation_manager.is_feature_available(self.name, "advanced_search"):
+            return await self._advanced_search(query)
+        
+        elif self.degradation_manager.is_feature_available(self.name, "basic_search"):
+            return await self._basic_search(query)
+        
+        elif self.degradation_manager.is_feature_available(self.name, "cached_results"):
+            return await self._cached_search(query)
+        
+        else:
+            raise ServiceUnavailableError(f"{self.name} is currently offline")
+    
+    async def _advanced_search(self, query: str) -> SearchResult:
+        """Full-featured search with AI enhancement"""
+        # Implementation with all features
+        pass
+    
+    async def _basic_search(self, query: str) -> SearchResult:
+        """Basic search without AI features"""
+        # Simplified implementation
+        pass
+    
+    async def _cached_search(self, query: str) -> SearchResult:
+        """Return cached results only"""
+        # Return cached data
+        pass
+
+# Health monitoring and automatic degradation
+class HealthMonitor:
+    def __init__(self, degradation_manager: GracefulDegradationManager):
+        self.degradation_manager = degradation_manager
+        self.health_checks = {}
+        self.monitoring_tasks = {}
+    
+    def register_health_check(self, service: str, check_func: Callable, interval: int = 30):
+        """Register a health check for a service"""
+        self.health_checks[service] = {
+            "func": check_func,
+            "interval": interval,
+            "failures": 0,
+            "last_check": None
+        }
+    
+    async def start_monitoring(self):
+        """Start health monitoring for all services"""
+        for service in self.health_checks:
+            task = asyncio.create_task(self._monitor_service(service))
+            self.monitoring_tasks[service] = task
+    
+    async def _monitor_service(self, service: str):
+        """Monitor individual service health"""
+        check_config = self.health_checks[service]
+        
+        while True:
+            try:
+                # Perform health check
+                is_healthy = await check_config["func"]()
+                
+                if is_healthy:
+                    check_config["failures"] = 0
+                    # Potentially upgrade service level
+                    self._maybe_upgrade_service(service)
+                else:
+                    check_config["failures"] += 1
+                    self._maybe_degrade_service(service, check_config["failures"])
+                
+                check_config["last_check"] = datetime.utcnow()
+                
+            except Exception as e:
+                logger.error(f"Health check failed for {service}: {e}")
+                check_config["failures"] += 1
+                self._maybe_degrade_service(service, check_config["failures"])
+            
+            await asyncio.sleep(check_config["interval"])
+    
+    def _maybe_degrade_service(self, service: str, failure_count: int):
+        """Degrade service based on failure count"""
+        current_level = self.degradation_manager.get_service_level(service)
+        
+        if failure_count >= 5 and current_level != ServiceLevel.OFFLINE:
+            self.degradation_manager.set_service_level(service, ServiceLevel.OFFLINE)
+        elif failure_count >= 3 and current_level == ServiceLevel.FULL:
+            self.degradation_manager.set_service_level(service, ServiceLevel.REDUCED)
+        elif failure_count >= 2 and current_level == ServiceLevel.REDUCED:
+            self.degradation_manager.set_service_level(service, ServiceLevel.MINIMAL)
+    
+    def _maybe_upgrade_service(self, service: str):
+        """Upgrade service level if consistently healthy"""
+        current_level = self.degradation_manager.get_service_level(service)
+        
+        # Upgrade logic - be conservative
+        if current_level == ServiceLevel.MINIMAL:
+            self.degradation_manager.set_service_level(service, ServiceLevel.REDUCED)
+        elif current_level == ServiceLevel.REDUCED:
+            self.degradation_manager.set_service_level(service, ServiceLevel.FULL)
+```
+
+</details>
+
+---
+
+## 📊 Observability & Monitoring
+
+### Structured Logging
+
+<details>
+<summary>📝 Comprehensive Logging Strategy</summary>
+
+```python
+# Structured logging implementation
+import structlog
+import json
+from typing import Any, Dict
+from datetime import datetime
+
+# Configure structured logging
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.dev.ConsoleRenderer()  # For development
+    ],
+    wrapper_class=structlog.make_filtering_bound_logger(30),  # INFO level
+    logger_factory=structlog.WriteLoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
+class StructuredLogger:
+    def __init__(self, name: str):
+        self.logger = structlog.get_logger(name)
+    
+    def info(self, message: str, **kwargs):
+        self.logger.info(message, **kwargs)
+    
+    def error(self, message: str, error: Exception = None, **kwargs):
+        if error:
+            kwargs["error_type"] = type(error).__name__
+            kwargs["error_message"] = str(error)
+        self.logger.error(message, **kwargs)
+    
+    def warn(self, message: str, **kwargs):
+        self.logger.warning(message, **kwargs)
+    
+    def debug(self, message: str, **kwargs):
+        self.logger.debug(message, **kwargs)
+
+# Request logging middleware
+class RequestLoggingMiddleware:
+    def __init__(self):
+        self.logger = StructuredLogger("request")
+    
+    async def __call__(self, request: Request, call_next):
+        start_time = time.time()
+        request_id = str(uuid.uuid4())
+        
+        # Add request context
+        structlog.contextvars.bind_contextvars(
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.client.host
+        )
+        
+        self.logger.info("Request started")
+        
+        try:
+            response = await call_next(request)
+            
+            duration = time.time() - start_time
+            
+            self.logger.info(
+                "Request completed",
+                status_code=response.status_code,
+                duration=duration,
+                response_size=len(response.body) if hasattr(response, 'body') else None
+            )
+            
+            return response
+            
+        except Exception as e:
+            duration = time.time() - start_time
+            
+            self.logger.error(
+                "Request failed",
+                error=e,
+                duration=duration
+            )
+            
+            raise
+        finally:
+            structlog.contextvars.clear_contextvars()
+
+# Business logic logging
+class BusinessEventLogger:
+    def __init__(self):
+        self.logger = StructuredLogger("business")
+    
+    def log_artifact_created(self, artifact: Artifact, user_id: str):
+        self.logger.info(
+            "Artifact created",
+            event="artifact_created",
+            artifact_id=artifact.id,
+            artifact_type=artifact.type,
+            user_id=user_id,
+            title=artifact.title
+        )
+    
+    def log_tool_executed(self, tool_name: str, user_id: str, duration: float, success: bool):
+        self.logger.info(
+            "Tool executed",
+            event="tool_executed",
+            tool_name=tool_name,
+            user_id=user_id,
+            duration=duration,
+            success=success
+        )
+    
+    def log_user_action(self, action: str, user_id: str, metadata: Dict[str, Any] = None):
+        self.logger.info(
+            "User action",
+            event="user_action",
+            action=action,
+            user_id=user_id,
+            metadata=metadata or {}
+        )
+```
+
+</details>
+
+### Metrics Collection
+
+<details>
+<summary>📈 Prometheus Metrics Integration</summary>
+
+```python
+# Prometheus metrics collection
+from prometheus_client import Counter, Histogram, Gauge, Info
+import time
+
+# Define metrics
+REQUEST_COUNT = Counter(
+    'http_requests_total',
+    'Total HTTP requests',
+    ['method', 'endpoint', 'status_code']
+)
+
+REQUEST_DURATION = Histogram(
+    'http_request_duration_seconds',
+    'HTTP request duration',
+    ['method', 'endpoint']
+)
+
+ACTIVE_CONNECTIONS = Gauge(
+    'active_connections',
+    'Number of active connections'
+)
+
+TOOL_EXECUTIONS = Counter(
+    'tool_executions_total',
+    'Total tool executions',
+    ['tool_name', 'status']
+)
+
+TOOL_DURATION = Histogram(
+    'tool_execution_duration_seconds',
+    'Tool execution duration',
+    ['tool_name']
+)
+
+ARTIFACTS_CREATED = Counter(
+    'artifacts_created_total',
+    'Total artifacts created',
+    ['artifact_type', 'user_id']
+)
+
+CACHE_OPERATIONS = Counter(
+    'cache_operations_total',
+    'Cache operations',
+    ['operation', 'result']
+)
+
+# Metrics middleware
+class MetricsMiddleware:
+    async def __call__(self, request: Request, call_next):
+        start_time = time.time()
+        
+        try:
+            response = await call_next(request)
+            
+            # Record metrics
+            REQUEST_COUNT.labels(
+                method=request.method,
+                endpoint=request.url.path,
+                status_code=response.status_code
+            ).inc()
+            
+            REQUEST_DURATION.labels(
+                method=request.method,
+                endpoint=request.url.path
+            ).observe(time.time() - start_time)
+            
+            return response
+            
+        except Exception as e:
+            REQUEST_COUNT.labels(
+                method=request.method,
+                endpoint=request.url.path,
+                status_code=500
+            ).inc()
+            
+            raise
+
+# Business metrics collector
+class BusinessMetricsCollector:
+    def record_tool_execution(self, tool_name: str, duration: float, success: bool):
+        """Record tool execution metrics"""
+        TOOL_EXECUTIONS.labels(
+            tool_name=tool_name,
+            status="success" if success else "failure"
+        ).inc()
+        
+        TOOL_DURATION.labels(tool_name=tool_name).observe(duration)
+    
+    def record_artifact_creation(self, artifact_type: str, user_id: str):
+        """Record artifact creation"""
+        ARTIFACTS_CREATED.labels(
+            artifact_type=artifact_type,
+            user_id=user_id
+        ).inc()
+    
+    def record_cache_operation(self, operation: str, hit: bool):
+        """Record cache operation"""
+        CACHE_OPERATIONS.labels(
+            operation=operation,
+            result="hit" if hit else "miss"
+        ).inc()
+
+# Custom metrics endpoint
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+    
+    return Response(
+        generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
+    )
+```
+
+</details>
+
+### Distributed Tracing
+
+<details>
+<summary>🔍 OpenTelemetry Tracing Setup</summary>
+
+```python
+# OpenTelemetry distributed tracing
+from opentelemetry import trace
+from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
+# Configure tracing
+trace.set_tracer_provider(TracerProvider())
+tracer = trace.get_tracer(__name__)
+
+# Configure Jaeger exporter
+jaeger_exporter = JaegerExporter(
+    agent_host_name="jaeger",
+    agent_port=6831,
+)
+
+span_processor = BatchSpanProcessor(jaeger_exporter)
+trace.get_tracer_provider().add_span_processor(span_processor)
+
+# Instrument FastAPI and HTTP clients
+FastAPIInstrumentor.instrument_app(app)
+HTTPXClientInstrumentor().instrument()
+
+# Custom tracing decorators
+def trace_function(operation_name: str = None):
+    """Decorator to trace function execution"""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            span_name = operation_name or f"{func.__module__}.{func.__name__}"
+            
+            with tracer.start_as_current_span(span_name) as span:
+                # Add function parameters as attributes
+                span.set_attribute("function.name", func.__name__)
+                span.set_attribute("function.module", func.__module__)
+                
+                try:
+                    result = await func(*args, **kwargs)
+                    span.set_attribute("result.success", True)
+                    return result
+                    
+                except Exception as e:
+                    span.set_attribute("result.success", False)
+                    span.set_attribute("error.type", type(e).__name__)
+                    span.set_attribute("error.message", str(e))
+                    span.record_exception(e)
+                    raise
+        
+        return wrapper
+    return decorator
+
+# Trace tool executions
+class TracedToolExecutor:
+    def __init__(self, tool_executor: ToolExecutor):
+        self.tool_executor = tool_executor
+    
+    @trace_function("tool.execute")
+    async def execute(self, tool_request: ToolRequest) -> ToolResult:
+        """Execute tool with distributed tracing"""
+        
+        with tracer.start_as_current_span("tool.validate") as span:
+            span.set_attribute("tool.name", tool_request.name)
+            span.set_attribute("tool.params", str(tool_request.parameters))
+            await self.tool_executor.validate_request(tool_request)
+        
+        with tracer.start_as_current_span("tool.call_mcp") as span:
+            span.set_attribute("mcp.server", self._get_server_for_tool(tool_request.name))
+            result = await self.tool_executor.execute(tool_request)
+        
+        with tracer.start_as_current_span("tool.process_result") as span:
+            span.set_attribute("result.success", result.success)
+            span.set_attribute("result.artifacts_count", len(result.artifacts))
+            processed_result = await self.tool_executor.process_result(result)
+        
+        return processed_result
+
+# Trace database operations
+class TracedDatabase:
+    def __init__(self, database):
+        self.database = database
+    
+    @trace_function("db.query")
+    async def query(self, sql: str, *params) -> List[dict]:
+        """Execute database query with tracing"""
+        
+        with tracer.start_as_current_span("db.execute") as span:
+            span.set_attribute("db.statement", sql[:100] + "..." if len(sql) > 100 else sql)
+            span.set_attribute("db.params_count", len(params))
+            
+            start_time = time.time()
+            result = await self.database.query(sql, *params)
+            duration = time.time() - start_time
+            
+            span.set_attribute("db.duration", duration)
+            span.set_attribute("db.rows_returned", len(result))
+            
+            return result
+```
+
+</details>
+
+---
+
+## 🎯 Technology Decision Matrix
+
+### Framework Selection Criteria
+
+| Criterion | Weight | LobeChat | Next.js | React | Score |
+|-----------|--------|----------|---------|-------|-------|
+| **Developer Experience** | 25% | 9/10 | 8/10 | 7/10 | 8.25 |
+| **Community Support** | 20% | 7/10 | 9/10 | 10/10 | 8.4 |
+| **Performance** | 20% | 8/10 | 9/10 | 8/10 | 8.2 |
+| **Extensibility** | 15% | 10/10 | 7/10 | 9/10 | 8.7 |
+| **Documentation** | 10% | 8/10 | 9/10 | 9/10 | 8.6 |
+| **Maintenance** | 10% | 8/10 | 8/10 | 9/10 | 8.3 |
+| **Total Score** | 100% | - | - | - | **8.41/10** |
+
+### Database Technology Matrix
+
+| Database | Use Case | Pros | Cons | Decision |
+|----------|----------|------|------|----------|
+| **PostgreSQL** | Primary relational data | ACID compliance, mature, SQL | Limited horizontal scaling | ✅ Primary |
+| **Redis** | Caching & sessions | High performance, simple | Memory-bound, data loss risk | ✅ Cache |
+| **Qdrant** | Vector similarity | Purpose-built, fast search | Specialized use case | ✅ Vectors |
+| **Neo4j** | Knowledge graphs | Relationship queries, flexible | Learning curve, licensing | ✅ Graphs |
+
+### Tool Integration Comparison
+
+| Integration Approach | Complexity | Performance | Maintainability | Chosen |
+|---------------------|------------|-------------|----------------|---------|
+| **Direct SDK Integration** | Low | High | Medium | ❌ |
+| **REST API Calls** | Medium | Medium | High | ❌ |
+| **MCP Protocol** | High | Medium | High | ✅ |
+| **Webhook Events** | Low | Low | Low | ❌ |
+
+**MCP Selection Rationale:**
+- Standardized protocol across tools
+- Built-in versioning and capability discovery
+- Isolation and security benefits
+- Future-proof extensibility
+
+---
+
+## 🚀 Future Architecture Evolution
+
+### Roadmap: Next 6 Months
+
+<details>
+<summary>📅 Short-term Architectural Improvements</summary>
+
+#### Phase 1: Performance Optimization (Month 1-2)
+- [ ] Implement advanced caching strategies
+- [ ] Add database query optimization
+- [ ] Introduce connection pooling improvements
+- [ ] Deploy CDN for static assets
+- [ ] Add response compression
+
+#### Phase 2: Scalability Enhancements (Month 2-3)
+- [ ] Implement database sharding
+- [ ] Add horizontal pod autoscaling
+- [ ] Introduce load balancing improvements
+- [ ] Deploy multi-region support
+- [ ] Add asynchronous processing queues
+
+#### Phase 3: Feature Expansion (Month 3-4)
+- [ ] Add real-time collaboration features
+- [ ] Implement voice interaction
+- [ ] Add mobile app support
+- [ ] Introduce plugin marketplace
+- [ ] Add advanced analytics
+
+#### Phase 4: Security & Compliance (Month 4-5)
+- [ ] Implement SOC 2 compliance
+- [ ] Add audit logging
+- [ ] Introduce zero-trust networking
+- [ ] Deploy advanced threat detection
+- [ ] Add data encryption at rest
+
+#### Phase 5: AI/ML Enhancements (Month 5-6)
+- [ ] Add model fine-tuning capabilities
+- [ ] Implement advanced RAG techniques
+- [ ] Add multi-modal AI support
+- [ ] Introduce automated optimization
+- [ ] Deploy edge AI processing
+
+</details>
+
+### Long-term Vision (12+ Months)
+
+<details>
+<summary>🔮 Future Architecture Concepts</summary>
+
+#### Microservices Evolution
+```mermaid
+graph TB
+    subgraph "Current Monolith"
+        FA[FastAgent Backend]
+    end
+    
+    subgraph "Future Microservices"
+        US[User Service]
+        AS[Artifact Service]
+        TS[Tool Service]
+        NS[Notification Service]
+        SS[Search Service]
+        MS[Monitoring Service]
+    end
+    
+    FA -.->|Evolution| US
+    FA -.->|Evolution| AS
+    FA -.->|Evolution| TS
+    FA -.->|Evolution| NS
+    FA -.->|Evolution| SS
+    FA -.->|Evolution| MS
+```
+
+#### Edge Computing Integration
+- **Edge AI Processing**: Deploy smaller models at edge locations
+- **Local-first Architecture**: Offline-capable clients with sync
+- **Progressive Enhancement**: Graceful feature degradation
+- **Distributed Caching**: Multi-tier caching across edge nodes
+
+#### Advanced AI Integration
+- **Model Orchestration**: Dynamic model selection based on task
+- **Federated Learning**: Privacy-preserving collaborative training  
+- **Autonomous Agents**: Self-improving AI assistants
+- **Multimodal Processing**: Unified text, image, audio, video handling
+
+</details>
+
+---
+
+## 📖 Glossary & References
+
+### Technical Glossary
+
+| Term | Definition |
+|------|------------|
+| **Artifact** | Discrete output unit (code, image, document) displayed in UI |
+| **CUA** | Computer User Assistance - sandbox environment interaction |
+| **MCP** | Model Context Protocol - standardized tool integration protocol |
+| **Tool** | Executable action via MCP (e.g., `github.create_issue`) |
+| **Intent** | Processed user request with context and routing information |
+| **Circuit Breaker** | Fault tolerance pattern for external service calls |
+| **Blue-Green** | Deployment strategy with zero-downtime updates |
+| **Sharding** | Database partitioning for horizontal scaling |
+
+### Architecture References
+
+- [Microservices Patterns](https://microservices.io/patterns/) - Martin Fowler
+- [System Design Primer](https://github.com/donnemartin/system-design-primer)
+- [The Twelve-Factor App](https://12factor.net/) - Methodology for SaaS apps
+- [Building Event-Driven Microservices](https://www.oreilly.com/library/view/building-event-driven-microservices/9781492057888/)
+- [Designing Data-Intensive Applications](https://dataintensive.net/) - Martin Kleppmann
+
+### Technology Documentation
+
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [React Documentation](https://react.dev/)
+- [MCP Specification](https://spec.modelcontextprotocol.io/)
+- [Qdrant Documentation](https://qdrant.tech/documentation/)
+- [Neo4j Developer Guide](https://neo4j.com/developer/)
+
+---
+
+## 📊 Architecture Metrics & KPIs
+
+### Performance Targets
+
+| Metric | Target | Measurement |
+|--------|--------|-------------|
+| **API Response Time** | < 200ms (95th percentile) | Prometheus histogram |
+| **Frontend Load Time** | < 2.5s (LCP) | Web Vitals |
+| **Cache Hit Rate** | > 80% | Redis metrics |
+| **Database Query Time** | < 100ms (average) | Query monitoring |
+| **Tool Execution Time** | < 10s (95th percentile) | Distributed tracing |
+
+### Reliability Targets
+
+| Metric | Target | Measurement |
+|--------|--------|-------------|
+| **System Uptime** | 99.9% | Health check monitoring |
+| **Error Rate** | < 1% | Error tracking |
+| **MTTR** | < 15 minutes | Incident response |
+| **MTBF** | > 720 hours | Reliability monitoring |
+
+### Scalability Metrics
+
+| Metric | Current | Target (6 months) |
+|--------|---------|-------------------|
+| **Concurrent Users** | 100 | 10,000 |
+| **Requests/Second** | 500 | 50,000 |
+| **Database Connections** | 50 | 500 |
+| **Cache Memory** | 1GB | 100GB |
+
+---
+
+*Architecture document maintained by the CUA development team. Last updated: $(date +'%Y-%m-%d')*
+
+*For operational details and development guidelines, see [`.github/copilot-instructions.md`](.github/copilot-instructions.md)*
 
 
 ## 2. Diagramas
