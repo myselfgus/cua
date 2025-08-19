@@ -1,31 +1,68 @@
-# Client Project Starter
+# Project CUA (Computer User Assistance)
 
-Choose one technology stack to scaffold (nothing has been generated yet):
+Rich conversational + execution agent platform: modified LobeChat frontend (React/Next.js) + FastAgent backend (FastAPI) + MCP Gateway + E2B sandbox integration.
 
-| Option | Stack | Directory | Description |
-| ------ | ----- | --------- | ----------- |
-| 1 | Node.js + TypeScript Express API | `api/` | REST API backend with Express + Zod validation |
-| 2 | React + Vite Frontend | `web/` | SPA frontend using React + Vite + TypeScript |
-| 3 | Python FastAPI Backend | `python-api/` | Async Python API with FastAPI + Pydantic |
-| 4 | .NET 8 Web API | `dotnet-api/` | C# Web API project |
+## Tech Stack
 
-## How to Proceed
+| Layer | Choice | Notes |
+|-------|--------|-------|
+| Frontend | LobeChat (React/Next.js) | Custom hooks: artifacts, CUA, STT/TTS |
+| Backend | FastAgent (FastAPI) | Orquestração + tool routing |
+| Tools | MCP Servers (GitHub, Playwright, SSH, Qdrant, Neo4j, E2B) | Via MCP Gateway |
+| AI | Cloudflare AI Gateway + OpenAI | Routing, caching, STT/TTS |
+| Cache | Redis | Sessões + artefatos |
+| Data | Qdrant (vetores), Neo4j (grafo) | Context injection |
 
-Reply with the number (1-4) or the stack name you want. I will scaffold only that choice.
+## Repository Layout (planned)
 
-## After Selection (Planned Steps)
+```text
+frontend/
+backend/
+infra/
+	docker-mcp-gateway/
+	cloudflare-tunnel/
+docs/
+```
 
-1. Initialize the chosen stack in its folder.
-2. Add baseline tooling (linting/formatting/test) appropriate to stack.
-3. Provide run/build/debug commands (PowerShell friendly).
-4. Add a VS Code task + launch config if useful.
-5. Update this README with concrete instructions.
+## Environment Variables (core)
 
-## Optional Enhancements (post-scaffold)
+```dotenv
+APP_API_URL=...
+APP_AI_GATEWAY_URL=...
+APP_MCP_GATEWAY_URL=...
+APP_QDRANT_URL=...
+APP_NEO4J_URL=...
+APP_REDIS_URL=...
+APP_E2B_ENDPOINT=...
+SECRET_OPENAI_API_KEY=...
+SECRET_CF_AI_TOKEN=...
+```
 
-- Dockerfile / compose
-- Pre-commit hooks
-- CI workflow
-- Basic health endpoint / sample component
+## Planned Commands
 
-Let me know your selection or any customizations (e.g., package manager, Python version, auth needs) before scaffolding.
+Will be added after scaffold:
+
+- Frontend dev: `npm run dev` (frontend)
+- Backend dev: `uvicorn app.main:app --reload`
+- Unified CI: `pwsh ./scripts/ci.ps1`
+
+## Roadmap (Initial)
+
+1. Scaffold frontend + backend minimal hello world
+2. Add artifact viewer skeleton (Monaco + XTerm + media panel)
+3. Implement FastAgent intent endpoint + tool executor abstraction
+4. Integrate Redis cache manager
+5. Add Qdrant + Neo4j client wrappers
+6. Add MCP gateway config + connection negotiator
+7. Add CI & coverage gates
+8. Architecture doc finalize
+
+## Contributing
+
+Follow Conventional Commits. Small focused PRs.
+
+## License
+
+TBD
+
+See `.github/copilot-instructions.md` for detailed playbook.
