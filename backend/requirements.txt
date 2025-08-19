@@ -62,3 +62,4 @@ pre-commit==4.0.1            # Git hooks
 # Security
 safety==3.3.0                # Dependency vulnerability scanner
 bandit==1.8.0                # Security linter
+fastagent @ git+https://github.com/evalstate/fast-agent@b9dbb6f0b0636e50480ea5cf4d514595413d8219
