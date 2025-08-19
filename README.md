@@ -434,7 +434,7 @@ APP_REDIS_URL=redis://redis.cua.yourdomain.com:6379
 APP_E2B_ENDPOINT=https://e2b.cua.yourdomain.com
 
 # Authentication & Security
-SECRET_OPENAI_API_KEY=sk-proj-...
+SECRET_OPENAI_API_KEY=your-openai-api-key
 SECRET_CF_AI_TOKEN=your-cloudflare-token
 SECRET_REDIS_PASSWORD=your-redis-password
 SECRET_JWT_SECRET=your-jwt-secret

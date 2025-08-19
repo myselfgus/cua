@@ -116,8 +116,8 @@ APP_NEO4J_URL=http://localhost:7474
 APP_REDIS_URL=redis://localhost:6379
 
 # API Keys (REQUIRED - Replace with your keys)
-SECRET_OPENAI_API_KEY=sk-proj-your-openai-api-key-here
-SECRET_GITHUB_TOKEN=ghp_your-github-token-here
+SECRET_OPENAI_API_KEY=your-openai-api-key-here
+SECRET_GITHUB_TOKEN=your-github-token-here
 
 # Development Settings
 NODE_ENV=development
@@ -161,10 +161,10 @@ APP_E2B_ENDPOINT=https://e2b.cua.yourdomain.com
 # =============================================================================
 
 # OpenAI API Key (REQUIRED for AI features)
-SECRET_OPENAI_API_KEY=sk-proj-your-openai-api-key-here
+SECRET_OPENAI_API_KEY=your-openai-api-key-here
 
 # GitHub Token (REQUIRED for GitHub MCP features)
-SECRET_GITHUB_TOKEN=ghp_your-github-token-here
+SECRET_GITHUB_TOKEN=your-github-token-here
 
 # Optional API Keys
 SECRET_CF_AI_TOKEN=your-cloudflare-token-here

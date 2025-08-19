@@ -131,8 +131,8 @@ chmod +x .git/hooks/pre-commit
 ### Example `.env` structure:
 ```bash
 # API Keys
-OPENAI_API_KEY=sk-your-actual-key-here
-GITHUB_TOKEN=ghp_your-actual-token-here
+OPENAI_API_KEY=your-actual-key-here
+GITHUB_TOKEN=your-actual-token-here
 
 # Database
 DATABASE_URL=postgresql://user:pass@localhost:5432/cua_db
