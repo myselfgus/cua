@@ -1,113 +1,228 @@
 # 🚀 Project CUA (Computer User Assistance)
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/myselfgus/cua/actions)
+[![Build Status](https://img.shields.io/badge/build-simplified--ci-brightgreen.svg)](https://github.com/myselfgus/cua/actions)
 [![Version](https://img.shields.io/badge/version-0.1.0-orange.svg)](https://github.com/myselfgus/cua/releases)
-[![Documentation](https://img.shields.io/badge/docs-comprehensive-purple.svg)](docs/ARCHITECTURE.md)
+[![Development Stage](https://img.shields.io/badge/stage-MVP%20Development-yellow.svg)](#-development-status)
 
-> **Rich conversational + execution agent platform** with advanced AI capabilities, sandbox integration, and real-time collaboration features.
+> **Agentive AI system with rich conversational interface** - Currently in MVP development stage with simplified workflows and sanitized codebase.
 
-## 📋 Table of Contents
+## 🚧 Development Status
 
-<details>
-<summary>🔍 Click to expand navigation</summary>
+**Current State**: Early MVP Development
+- ✅ **Frontend**: React/Next.js interface (based on LobeChat, customized for CUA)
+- ✅ **Backend**: Basic FastAPI application with E2B stubs
+- ✅ **Infrastructure**: Simplified Docker setup for essential services
+- ⚠️ **Workflows**: Simplified CI/CD appropriate for current development stage
+- 🔄 **In Progress**: Core CUA functionality implementation
 
-- [🎯 Vision & Architecture](#-vision--architecture)
-- [🛠️ Tech Stack](#️-tech-stack)
-- [🏗️ System Architecture](#️-system-architecture)
-- [📁 Repository Structure](#-repository-structure)
+## 📋 Quick Navigation
+
+- [🎯 Project Vision](#-project-vision)
+- [🏗️ Current Architecture](#️-current-architecture)
 - [🚀 Quick Start](#-quick-start)
 - [🔧 Development Setup](#-development-setup)
 - [🌐 Environment Configuration](#-environment-configuration)
-- [📦 Dependencies & Requirements](#-dependencies--requirements)
-- [🔄 Workflows & Pipelines](#-workflows--pipelines)
-- [📚 Referenced Repositories](#-referenced-repositories)
-- [🧪 Testing Strategy](#-testing-strategy)
-- [🚀 Deployment](#-deployment)
-- [🤝 Contributing](#-contributing)
-- [📖 Documentation](#-documentation)
+- [🔄 Simplified Workflows](#-simplified-workflows)
+- [📚 Documentation](#-documentation)
 
-</details>
+## 🎯 Project Vision
 
-## 🎯 Vision & Architecture
+Project CUA aims to be an **advanced AI agent platform** that will eventually combine:
 
-Project CUA is an **advanced AI agent platform** that combines:
-
-- 🖥️ **Rich Frontend**: Modified LobeChat with artifact tabs (code editor, terminal, media, sandbox)
-- 🧠 **Intelligent Backend**: FastAgent orchestrator with tool routing and planning
+- 🖥️ **Rich Frontend**: React/Next.js interface with artifact tabs (code editor, terminal, media, sandbox)
+- 🧠 **Intelligent Backend**: FastAgent orchestrator with tool routing and planning  
 - 🔌 **Extensible Tools**: MCP servers for GitHub, Playwright, SSH, databases, and E2B sandboxes
 - ⚡ **Low Latency**: Direct client connections to specialized services
 - 🔒 **Secure Execution**: Isolated sandbox environments with controlled access
 
+## 🏗️ Current Architecture
+
+**MVP Development Architecture** (Simplified for early development):
+
 ```mermaid
 graph TB
-    subgraph "Client Layer"
-        UI[🖥️ LobeChat Frontend]
-        STT[🎤 Speech-to-Text]
-        TTS[🔊 Text-to-Speech]
-        Tabs[📑 Artifact Tabs]
+    subgraph "Frontend"
+        UI[🖥️ CUA Frontend]
+        ENV[🔧 CUA Environment Config]
     end
-
-    subgraph "Orchestration Layer"
-        FA[🧠 FastAgent Backend]
-        AG[🤖 AI Gateway]
-        MG[🔌 MCP Gateway]
+    
+    subgraph "Backend"
+        API[🚀 FastAPI Server]
+        E2B_STUB[📦 E2B Stub]
     end
-
-    subgraph "Data Layer"
-        Redis[(🗄️ Redis Cache)]
-        Qdrant[(🔍 Vector DB)]
-        Neo4j[(🕸️ Graph DB)]
+    
+    subgraph "Essential Services"
+        PG[(🐘 PostgreSQL)]
+        RD[(🔴 Redis)]
     end
-
-    subgraph "Tool Layer"
-        GH[📝 GitHub MCP]
-        PW[🌐 Playwright MCP]
-        SSH[🖥️ SSH MCP]
-        E2B[📦 E2B Sandbox]
+    
+    subgraph "Optional Services"
+        QD[(🔍 Qdrant)]
+        N4J[(🕸️ Neo4j)]
     end
-
-    UI --> FA
-    UI --> AG
-    UI --> Qdrant
-    UI --> Neo4j
-    FA --> MG
-    FA --> Redis
-    MG --> GH
-    MG --> PW
-    MG --> SSH
-    FA --> E2B
+    
+    UI --> API
+    API --> PG
+    API --> RD
+    API -.-> QD
+    API -.-> N4J
 ```
 
-## 🛠️ Tech Stack
+## 🚀 Quick Start
 
-<details>
-<summary>📊 Comprehensive Technology Overview</summary>
+### Prerequisites
+- Docker & Docker Compose
+- Node.js 20+ (for frontend development)
+- Python 3.11+ (for backend development)
 
-| Layer | Technology | Purpose | Key Features |
-|-------|------------|---------|--------------|
-| **Frontend** | [LobeChat](https://github.com/lobehub/lobe-chat) (React/Next.js) | Rich UI with artifact visualization | Custom hooks, STT/TTS, multi-tab interface |
-| **Backend** | [FastAgent](https://github.com/agentic-ai/fast-agent) (FastAPI) | Orchestration & tool routing | Async processing, tool planning, artifact generation |
-| **Protocol** | [MCP](https://github.com/modelcontextprotocol/spec) | Tool integration standard | Secure, extensible tool ecosystem |
-| **AI Gateway** | Cloudflare AI Gateway + OpenAI | AI model routing & caching | Multi-provider support, fallback mechanisms |
-| **Cache** | Redis | Session & artifact storage | High-performance, distributed caching |
-| **Vector DB** | [Qdrant](https://github.com/qdrant/qdrant) | Semantic search & memory | Vector similarity, contextual retrieval |
-| **Graph DB** | [Neo4j](https://github.com/neo4j/neo4j) | Knowledge graph & relationships | Complex query support, graph analytics |
-| **Sandbox** | [E2B](https://github.com/e2b-dev/e2b) | Code execution environment | Secure isolation, GPU support |
+### Basic Setup
 
-</details>
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/myselfgus/cua.git
+   cd cua
+   ```
 
-## 🏗️ System Architecture
-### 🔄 Core Workflows
+2. **Set up environment variables**
+   ```bash
+   # Copy environment templates
+   cp .env.example .env
+   cp frontend/.env.example frontend/.env.local
+   cp backend/.env.example backend/.env
+   
+   # Edit the files and add your API keys
+   ```
 
-The system implements three primary workflow patterns:
+3. **Start essential services**
+   ```bash
+   # Start PostgreSQL and Redis only
+   docker-compose up postgres redis
+   ```
 
-<details>
-<summary>📤 Message Processing Flow</summary>
+4. **Run backend**
+   ```bash
+   cd backend
+   pip install -r requirements.txt
+   uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+   ```
 
-```mermaid
-sequenceDiagram
-    participant U as User
+5. **Run frontend** (in separate terminal)
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+6. **Access the application**
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:8000
+   - API Docs: http://localhost:8000/docs
+
+## 🔧 Development Setup
+## 🔧 Development Setup
+
+### Full Development Environment
+
+For complete development with all services:
+
+```bash
+# Start all services including vector/graph databases
+docker-compose --profile full up
+
+# Or start backend in container
+docker-compose up backend
+```
+
+### Environment Configuration
+
+The project uses multiple environment files:
+
+| File | Purpose |
+|------|---------|
+| `.env` | Docker Compose variables |
+| `frontend/.env.local` | Frontend-specific variables |
+| `backend/.env` | Backend-specific variables |
+
+Key environment variables:
+
+```bash
+# AI Services
+SECRET_OPENAI_API_KEY=sk-your_key_here
+CLOUDFLARE_API_KEY=your_cloudflare_key
+
+# Database URLs
+DATABASE_URL=postgresql://user:pass@localhost:5432/cua_dev
+REDIS_URL=redis://localhost:6379
+QDRANT_URL=http://localhost:6333
+NEO4J_URL=bolt://localhost:7687
+```
+
+## 🔄 Simplified Workflows
+
+**Current CI/CD Status**: Workflows have been simplified for MVP development stage.
+
+### Active Workflows
+
+- ✅ **Simplified CI** (`.github/workflows/simplified-ci.yml`)
+  - Basic syntax validation
+  - Import testing
+  - Quick build verification
+
+- ✅ **Project Readiness** (`.github/workflows/project-readiness.yml`)
+  - Validates project development state
+  - Provides development guidance
+
+- ✅ **Basic Security** (`.github/workflows/security-scan.yml`)
+  - Simple secret detection
+  - Environment validation
+
+### Disabled Workflows
+
+Complex workflows have been temporarily disabled until core functionality is implemented:
+
+- 🚫 **Full CI Pipeline** (`ci.yml.disabled`) - Too complex for current stage
+- 🚫 **Deployment Pipeline** (`deploy.yml.disabled`) - Premature for MVP
+
+These will be re-enabled as the project matures.
+
+## 📚 Documentation
+
+- [📖 Architecture Details](docs/ARCHITECTURE.md) - Technical architecture overview
+- [📋 Development Guide](context.md) - Detailed development context
+- [🔧 Environment Setup](frontend/.env.example) - Environment variable templates
+
+## 🧪 Testing & Validation
+
+Current testing approach is simplified for MVP development:
+
+```bash
+# Test backend syntax
+cd backend && python -m py_compile main.py
+
+# Test frontend build
+cd frontend && npx tsc --noEmit --skipLibCheck
+
+# Run project readiness validation
+python -c "from pathlib import Path; print('✅ Basic validation passed' if Path('backend/main.py').exists() and Path('frontend/package.json').exists() else '❌ Missing files')"
+```
+
+## 🤝 Contributing
+
+The project is in early MVP development. Current focus areas:
+
+1. **Core CUA Features**: Implement artifact management, tool orchestration
+2. **Frontend Customization**: Implement CUA-specific features in React/Next.js interface  
+3. **Backend Development**: Expand FastAPI application with MCP integration
+4. **Testing Infrastructure**: Add comprehensive test coverage as features stabilize
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+> **Note**: This project is currently in MVP development stage. Complex features and workflows are being implemented incrementally. The codebase has been sanitized and simplified to focus on core CUA functionality.
     participant UI as LobeChat UI
     participant Q as Qdrant
     participant N as Neo4j
