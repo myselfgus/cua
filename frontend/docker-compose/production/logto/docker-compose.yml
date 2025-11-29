@@ -26,7 +26,7 @@ services:
     volumes:
       - './s3_data:/etc/minio/data'
     environment:
-      - 'MINIO_ROOT_USER=YOUR_MINIO_USER'
+      - 'MINIO_ROOT_USER=${MINIO_ROOT_USER}'
       - 'MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}'
       - 'MINIO_DOMAIN=lobe-s3-api.example.com'
       - 'MINIO_API_CORS_ALLOW_ORIGIN=https://lobe.example.com' # Your LobeChat's domain name.
