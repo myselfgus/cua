@@ -41,8 +41,21 @@ chmod +x scripts/cua-setup.sh
 # Create root .env file
 cp .env.example .env
 
-# Create frontend .env.local
-cp frontend/.env.example frontend/.env.local
+# Create frontend .env.local (recommended: use setup script to ensure correct variables)
+./scripts/cua-setup.sh frontend-env
+# Alternatively, create frontend/.env.local manually with the following required variables:
+# (see CUA Playbook for details)
+cat > frontend/.env.local <<EOF
+APP_API_URL=
+APP_AI_GATEWAY_URL=
+APP_MCP_GATEWAY_URL=
+APP_QDRANT_URL=
+APP_NEO4J_URL=
+APP_REDIS_URL=
+APP_E2B_ENDPOINT=
+SECRET_OPENAI_API_KEY=
+SECRET_CF_AI_TOKEN=
+EOF
 ```
 
 2. **Install backend dependencies:**
