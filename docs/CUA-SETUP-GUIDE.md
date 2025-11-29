@@ -51,7 +51,7 @@ cp frontend/.env.example frontend/.env.local
 cd backend
 python3 -m venv venv
 source venv/bin/activate
-pip install fastapi uvicorn pydantic python-multipart httpx aiofiles redis structlog prometheus-client
+pip install -r requirements.txt
 ```
 
 3. **Install frontend dependencies:**
