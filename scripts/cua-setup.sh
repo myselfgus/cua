@@ -127,7 +127,7 @@ fi
 # Activate and install dependencies
 source venv/bin/activate
 pip install --upgrade pip -q
-pip install fastapi uvicorn pydantic python-multipart httpx aiofiles redis structlog prometheus-client -q
+pip install -r requirements.txt -q
 success "Installed backend dependencies"
 
 echo ""
