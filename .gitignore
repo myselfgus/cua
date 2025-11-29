@@ -20,6 +20,7 @@ pnpm-debug.log*
 
 # Python
 .venv/
+venv/
 __pycache__/
 *.py[cod]
 *.pyo
