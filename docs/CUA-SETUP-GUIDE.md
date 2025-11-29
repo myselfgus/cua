@@ -38,8 +38,7 @@ chmod +x scripts/cua-setup.sh
 1. **Clone and configure environment:**
 
 ```bash
-# Create root .env file
-cp .env.example .env
+# The setup script creates the root .env file automatically.
 
 # Create frontend .env.local (recommended: use setup script to ensure correct variables)
 ./scripts/cua-setup.sh frontend-env
