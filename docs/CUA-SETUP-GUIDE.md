@@ -38,22 +38,61 @@ chmod +x scripts/cua-setup.sh
 1. **Clone and configure environment:**
 
 ```bash
-# The setup script creates the root .env file automatically.
+# The setup script generates .env files with secure random passwords.
+# To create them manually, follow the CUA Playbook naming conventions:
 
-# Create frontend .env.local (recommended: use setup script to ensure correct variables)
-./scripts/cua-setup.sh frontend-env
-# Alternatively, create frontend/.env.local manually with the following required variables:
-# (see CUA Playbook for details)
+# Create root .env file
+cat > .env <<EOF
+# Database Passwords (SECRET_ prefix for sensitive data)
+SECRET_POSTGRES_PASSWORD=$(openssl rand -hex 16)
+SECRET_NEO4J_PASSWORD=$(openssl rand -hex 16)
+
+# API Keys (MUST be replaced with real keys)
+SECRET_OPENAI_API_KEY=sk-placeholder-set-your-real-key
+
+# Environment Configuration (APP_ prefix for app-level config)
+APP_ENVIRONMENT=development
+APP_DEBUG=true
+APP_CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://localhost:3010
+
+# Service URLs
+APP_DATABASE_URL=postgresql://cua_user:\${SECRET_POSTGRES_PASSWORD}@localhost:5432/cua_dev
+APP_REDIS_URL=redis://localhost:6379
+APP_QDRANT_URL=http://localhost:6333
+APP_NEO4J_URL=bolt://localhost:7687
+EOF
+
+# Create frontend .env.local
 cat > frontend/.env.local <<EOF
-APP_API_URL=
-APP_AI_GATEWAY_URL=
-APP_MCP_GATEWAY_URL=
-APP_QDRANT_URL=
-APP_NEO4J_URL=
-APP_REDIS_URL=
-APP_E2B_ENDPOINT=
-SECRET_OPENAI_API_KEY=
-SECRET_CF_AI_TOKEN=
+# Application URL (standardized to port 3010 for CUA)
+APP_URL=http://localhost:3010
+NEXT_PUBLIC_BASE_PATH=
+
+# Backend API URLs
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_MCP_GATEWAY_URL=http://localhost:8001
+NEXT_PUBLIC_QDRANT_URL=http://localhost:6333
+NEXT_PUBLIC_NEO4J_URL=bolt://localhost:7687
+NEXT_PUBLIC_REDIS_URL=redis://localhost:6379
+NEXT_PUBLIC_E2B_ENDPOINT=http://localhost:8000/e2b
+
+# Service Mode
+NEXT_PUBLIC_SERVICE_MODE=client
+NEXT_PUBLIC_IS_DESKTOP_APP=0
+
+# Authentication (generate secure random secret)
+NEXT_PUBLIC_ENABLE_NEXT_AUTH=0
+NEXTAUTH_URL=http://localhost:3010
+NEXTAUTH_SECRET=$(openssl rand -base64 32)
+
+# Feature Flags
+NEXT_PUBLIC_ENABLE_SENTRY=false
+
+# MCP Configuration
+MCP_TOOL_TIMEOUT=60000
+ENABLE_GITHUB_MCP=true
+ENABLE_PLAYWRIGHT_MCP=true
+ENABLE_E2B_MCP=true
 EOF
 ```
 
@@ -91,23 +130,29 @@ cd frontend && pnpm dev
 #### Root `.env` File
 
 ```env
-# Database Passwords
-POSTGRES_PASSWORD=<secure_password>
-NEO4J_PASSWORD=<secure_password>
+# Database Passwords (SECRET_ prefix for sensitive data per CUA Playbook)
+SECRET_POSTGRES_PASSWORD=<secure_random_password>
+SECRET_NEO4J_PASSWORD=<secure_random_password>
 
 # API Keys
 SECRET_OPENAI_API_KEY=sk-your-key-here
 
-# Environment
-ENVIRONMENT=development
-DEBUG=true
-CORS_ORIGINS=http://localhost:3000,http://localhost:3010
+# Environment (APP_ prefix for app-level config per CUA Playbook)
+APP_ENVIRONMENT=development
+APP_DEBUG=true
+APP_CORS_ORIGINS=http://localhost:3000,http://localhost:3010
+
+# Service URLs
+APP_DATABASE_URL=postgresql://cua_user:${SECRET_POSTGRES_PASSWORD}@localhost:5432/cua_dev
+APP_REDIS_URL=redis://localhost:6379
+APP_QDRANT_URL=http://localhost:6333
+APP_NEO4J_URL=bolt://localhost:7687
 ```
 
 #### Frontend `.env.local` File
 
 ```env
-# URLs
+# Application URL (standardized to port 3010 for CUA)
 APP_URL=http://localhost:3010
 NEXT_PUBLIC_API_URL=http://localhost:8000
 NEXT_PUBLIC_E2B_ENDPOINT=http://localhost:8000/e2b
@@ -115,6 +160,10 @@ NEXT_PUBLIC_E2B_ENDPOINT=http://localhost:8000/e2b
 # Service Mode
 NEXT_PUBLIC_SERVICE_MODE=client
 NEXT_PUBLIC_IS_DESKTOP_APP=0
+
+# Authentication (use secure random secret, not predictable defaults)
+NEXTAUTH_URL=http://localhost:3010
+NEXTAUTH_SECRET=<use_openssl_rand_base64_32_for_production>
 
 # MCP Configuration
 MCP_TOOL_TIMEOUT=60000
