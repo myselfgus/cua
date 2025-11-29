@@ -65,15 +65,17 @@ info "Setting up environment files..."
 
 # Create root .env if not exists
 if [ ! -f "$PROJECT_ROOT/.env" ]; then
-    cat > "$PROJECT_ROOT/.env" << EOF
+    POSTGRES_PASSWORD=$(openssl rand -hex 16)
+    NEO4J_PASSWORD=$(openssl rand -hex 16)
+    cat > "$PROJECT_ROOT/.env" <<EOF
 # CUA Development Environment Variables
-POSTGRES_PASSWORD=\$(openssl rand -hex 16)
-NEO4J_PASSWORD=\$(openssl rand -hex 16)
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+NEO4J_PASSWORD=${NEO4J_PASSWORD}
 SECRET_OPENAI_API_KEY=sk-placeholder-set-your-real-key
 ENVIRONMENT=development
 DEBUG=true
 CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://localhost:3010
-DATABASE_URL=postgresql://cua_user:\\\{POSTGRES_PASSWORD\\\}@localhost:5432/cua_dev
+DATABASE_URL=postgresql://cua_user:${POSTGRES_PASSWORD}@localhost:5432/cua_dev
 REDIS_URL=redis://localhost:6379
 QDRANT_URL=http://localhost:6333
 NEO4J_URL=bolt://localhost:7687
