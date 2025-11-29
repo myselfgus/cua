@@ -36,12 +36,18 @@ info "Checking prerequisites..."
 if ! command -v python3 &> /dev/null; then
     error "Python 3 is required but not installed."
 fi
+if ! python3 -c 'import sys; exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+    error "Python 3.11+ is required. You have $(python3 --version)."
+fi
 PYTHON_VERSION=$(python3 --version 2>&1 | cut -d' ' -f2)
 success "Python ${PYTHON_VERSION} found"
 
 # Check Node.js
 if ! command -v node &> /dev/null; then
     error "Node.js is required but not installed."
+fi
+if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)'; then
+    error "Node.js 22+ is required. You have $(node --version)."
 fi
 NODE_VERSION=$(node --version)
 success "Node.js ${NODE_VERSION} found"
